@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>電卓プログラムのしくみ — ボタンを押すと中で何が起きているか</title>
+<style>
+:root{
+  --bg:#f6f4ef; --paper:#fff; --ink:#1c222a; --muted:#5d6672; --line:#e2ddd2; --soft:#efebe3;
+  --accent:#0d5c99;
+  --c-total:#1d5bbf; --t-total:#e7effc;
+  --c-op:#b04510;    --t-op:#fcede4;
+  --c-expr:#12784a;  --t-expr:#e4f4ea;
+  --c-cur:#6a3dcc;   --t-cur:#efe9fc;
+  --c-just:#ad2460;  --t-just:#fbe7ef;
+  --hl:#fff1b8;
+  --mono:"Cascadia Mono",Consolas,"SFMono-Regular",Menlo,"BIZ UDGothic","Noto Sans Mono CJK JP",monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","BIZ UDPGothic","Yu Gothic UI","Yu Gothic",Meiryo,sans-serif;font-size:16px;line-height:1.85;-webkit-text-size-adjust:100%}
+.wrap{max-width:1140px;margin:0 auto;padding:0 22px}
+a{color:var(--accent)}
+code{font-family:var(--mono);font-size:.9em;background:var(--soft);padding:.08em .38em;border-radius:4px;word-break:break-all}
+pre.snip{font-family:var(--mono);font-size:.88rem;line-height:1.65;background:#1f232b;color:#dfe2e8;padding:14px 18px;border-radius:10px;overflow-x:auto;margin:14px 0}
+pre.snip .cm{color:#8fb38f}
+pre.snip .mk{color:#ffd166;font-weight:700}
+
+/* header */
+header.hero{background:var(--ink);color:#f3f1ec;padding:56px 0 46px}
+.hero .kicker{font-size:.85rem;letter-spacing:.12em;color:#b9c2cc;margin:0 0 6px}
+.hero h1{font-size:2.3rem;line-height:1.35;margin:0 0 12px;font-weight:800}
+.hero p.lead{margin:0;max-width:44em;color:#d7dce2}
+nav.toc{background:var(--paper);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+nav.toc ol{list-style:none;margin:0 auto;padding:8px 22px;max-width:1140px;display:flex;gap:4px 18px;flex-wrap:wrap;font-size:.86rem}
+nav.toc a{text-decoration:none;color:var(--muted)}
+nav.toc a:hover{color:var(--ink)}
+nav.toc b{color:var(--accent);font-family:var(--mono);margin-right:3px}
+@media (max-width:760px){nav.toc{position:static}}
+
+section.sec{padding:52px 0 8px;scroll-margin-top:40px}
+h2{font-size:1.65rem;line-height:1.4;margin:0 0 18px;display:flex;gap:12px;align-items:baseline}
+h2 .no{font-family:var(--mono);font-size:1rem;color:#fff;background:var(--accent);border-radius:6px;padding:2px 9px;flex:none;position:relative;top:-3px}
+h3{font-size:1.2rem;margin:34px 0 10px;line-height:1.5}
+h4{font-size:1.02rem;margin:22px 0 6px}
+p{margin:0 0 14px}
+.muted{color:var(--muted)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:20px 24px;margin:16px 0}
+.note{background:#fff8e0;border-left:4px solid #dca400;border-radius:6px;padding:12px 16px;margin:16px 0}
+.key-idea{background:#e9f2fb;border-left:4px solid var(--accent);border-radius:6px;padding:14px 18px;margin:18px 0}
+.key-idea b.t{display:block;color:var(--accent);margin-bottom:2px}
+ul.tight,ol.tight{margin:6px 0 14px;padding-left:1.4em}
+ul.tight li,ol.tight li{margin:3px 0}
+
+/* variable chips */
+.v{font-family:var(--mono);font-weight:700;font-size:.9em;padding:.05em .4em;border-radius:4px;white-space:nowrap}
+.v.total{color:var(--c-total);background:var(--t-total)}
+.v.operation{color:var(--c-op);background:var(--t-op)}
+.v.expression{color:var(--c-expr);background:var(--t-expr)}
+.v.currentInput{color:var(--c-cur);background:var(--t-cur)}
+.v.justCalculated{color:var(--c-just);background:var(--t-just)}
+
+/* tables */
+.tblwrap{overflow-x:auto;margin:14px 0;border:1px solid var(--line);border-radius:10px;background:var(--paper)}
+table.tbl{border-collapse:collapse;width:100%;font-size:.92rem}
+table.tbl th,table.tbl td{padding:9px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+table.tbl th{background:#faf8f4;font-weight:700;white-space:nowrap}
+table.tbl tr:last-child td{border-bottom:none}
+td.mono,.mono{font-family:var(--mono)}
+
+/* flow diagram */
+.flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin:18px 0}
+.flow .box{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:12px 14px;flex:1 1 150px;min-width:140px}
+.flow .box b{display:block;font-size:.95rem}
+.flow .box span{font-size:.82rem;color:var(--muted);line-height:1.6;display:block;margin-top:4px}
+.flow .arr{display:flex;align-items:center;padding:0 6px;color:var(--muted);font-size:1.3rem}
+.flow .box.hot{border-color:var(--accent);box-shadow:0 0 0 2px #d5e6f6}
+
+/* delay table */
+table.delay td,table.delay th{text-align:center}
+table.delay td.k{font-family:var(--mono);font-size:1.15rem;font-weight:700}
+table.delay td.calc{background:#eef6ee;font-weight:700}
+
+/* simulator */
+.sim{display:grid;grid-template-columns:330px 1fr;gap:22px;align-items:start}
+@media (max-width:900px){.sim{grid-template-columns:1fr}}
+.calc{background:#2a2f37;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.18);max-width:330px}
+.disp{background:#e5ede0;border-radius:9px;padding:6px 12px 8px;font-family:var(--mono);position:relative}
+.disp .row{display:flex;align-items:center;gap:8px}
+.disp .tag{font-size:.62rem;color:#6d7a70;font-family:var(--mono);flex:none;width:6.6em}
+.disp .up{flex:1;text-align:right;min-height:1.5em;color:#4c584f;font-size:.95rem;white-space:nowrap;overflow:hidden}
+.disp .lo{flex:1;text-align:right;min-height:1.45em;font-size:1.9rem;font-weight:700;color:#1c241e;white-space:nowrap;overflow:hidden;line-height:1.45}
+.keys{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+.key{height:54px;border:none;border-radius:11px;font-size:1.3rem;font-family:var(--mono);background:#474e5a;color:#fff;cursor:pointer;position:relative;transition:transform .08s,filter .08s}
+.key:hover{filter:brightness(1.15)}
+.key:active,.key.flash{transform:scale(.94);filter:brightness(1.35)}
+.key.op{background:#d17a24}
+.key.eq{background:#2e8a58}
+.key.cl{background:#8a4752;font-size:1.05rem}
+.key.w2{grid-column:span 2}
+.key small{position:absolute;left:0;right:0;bottom:2px;font-size:.58rem;opacity:.8;display:none;letter-spacing:0}
+.shownames .key small{display:block}
+.calc-tools{display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:8px;flex-wrap:wrap}
+.calc-tools label{color:#c9cfd6;font-size:.8rem;cursor:pointer}
+.btn{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:8px;padding:6px 12px;font-size:.88rem;cursor:pointer;font-family:inherit}
+.btn:hover{border-color:#b9b2a3}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn.primary:disabled{opacity:.4;cursor:default}
+.btn.dark{background:#3b424d;color:#e8ebef;border-color:#555d69;font-size:.8rem;padding:4px 10px}
+
+.player{margin-top:18px}
+.player h4{margin:0 0 8px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:3px 12px;font-size:.84rem;cursor:pointer;font-family:var(--mono)}
+.chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.seq{margin:10px 0 8px;display:flex;flex-wrap:wrap;gap:4px}
+.seq span{font-family:var(--mono);border:1px solid #cfc8ba;border-radius:6px;padding:0 7px;font-size:.9rem;background:#fff}
+.seq span.done{opacity:.4}
+.seq span.next{border-color:var(--accent);box-shadow:0 0 0 2px #cfe2f5;font-weight:700}
+.player .ctrl{display:flex;gap:8px;flex-wrap:wrap}
+.stepnote{margin-top:10px;font-size:.9rem;background:#fff8e0;border-left:4px solid #dca400;padding:8px 12px;border-radius:6px;display:none}
+.history{margin-top:10px;font-size:.82rem;color:var(--muted);word-break:break-all}
+.history .mono{color:var(--ink)}
+
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:16px}
+.panel h4{margin:0 0 8px;font-size:.95rem;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.panel h4 small{font-weight:400;color:var(--muted);font-size:.78rem}
+table.vars{width:100%;border-collapse:collapse;font-size:.9rem}
+table.vars td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+table.vars tr:last-child td{border-bottom:none}
+table.vars td.t{color:var(--muted);font-family:var(--mono);font-size:.8rem;white-space:nowrap}
+table.vars td.val{font-family:var(--mono);word-break:break-all;width:60%}
+table.vars tr.changed td.val{background:var(--hl);font-weight:700}
+.prev{display:block;font-size:.76rem;color:var(--muted);font-weight:400}
+ol.trace{list-style:none;margin:0;padding:0;font-size:.88rem;line-height:1.65}
+ol.trace li{padding:3px 4px 3px calc(4px + var(--d) * 20px);border-radius:4px;position:relative}
+ol.trace li:hover{background:#f5f2ec}
+ol.trace li::before{content:"";position:absolute;left:calc(var(--d) * 20px - 10px);top:0;bottom:0;border-left:1px dashed #cfc8ba;display:var(--g)}
+ol.trace li.empty{color:var(--muted)}
+.lb{font-family:var(--mono);font-size:.72rem;background:#eef2f7;border:1px solid #cdd7e2;color:#2e4560;border-radius:4px;padding:0 5px;margin-right:6px;cursor:pointer;vertical-align:1px}
+.lb:hover{background:#dde8f4}
+a.lref{font-family:var(--mono);font-size:.85em;text-decoration:none;background:#eef2f7;border:1px solid #cdd7e2;border-radius:4px;padding:0 4px;color:#2e4560;cursor:pointer;white-space:nowrap}
+
+.codebox{height:460px;overflow:auto;background:#1e222a;color:#d6d9df;font-family:var(--mono);font-size:12.8px;line-height:1.62;border-radius:12px;position:relative;padding:8px 0}
+.codebox .ln{display:flex;white-space:pre;min-width:max-content}
+.codebox .no{width:3.6em;text-align:right;padding-right:1.1em;color:#5f6772;user-select:none;flex:none}
+.codebox .tx{padding-right:1.5em}
+.codebox .ln.hit{background:rgba(255,209,102,.15)}
+.codebox .ln.hit .no{color:#ffd166;font-weight:700}
+.codebox .ln.flash{animation:fl 1.6s ease-out}
+@keyframes fl{0%{background:rgba(120,190,255,.55)}100%{background:transparent}}
+.codebox .k{color:#82b1ff}
+.codebox .s{color:#e7c27d}
+.codebox .cm{color:#7fa07f}
+.legend{font-size:.8rem;color:var(--muted);margin:6px 0 0}
+.legend i{display:inline-block;width:12px;height:12px;background:rgba(255,209,102,.5);border-radius:2px;vertical-align:-1px;margin-right:4px}
+
+/* scenario tables */
+table.scn{min-width:1020px}
+table.scn td{font-size:.86rem}
+table.scn td.val{font-family:var(--mono);word-break:break-all;max-width:170px}
+table.scn td.val.chg{background:var(--hl);font-weight:700}
+table.scn td.keycell{font-family:var(--mono);font-weight:700;font-size:1.05rem;white-space:nowrap}
+table.scn td.no{color:var(--muted);font-family:var(--mono)}
+table.scn td.pt{min-width:240px;line-height:1.65}
+table.scn tr.init td{background:#faf8f4;color:var(--muted)}
+.mini{font-family:var(--mono);background:#e5ede0;border-radius:5px;padding:2px 7px;text-align:right;min-width:9em;line-height:1.4}
+.mini .u{font-size:.72rem;color:#4c584f;min-height:1em;white-space:nowrap}
+.mini .l{font-size:.95rem;font-weight:700;white-space:nowrap}
+.scn-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.scn-head h3{margin:0}
+.scn-block{margin-top:38px}
+.takeaway{background:#eef6ee;border-left:4px solid #2e8a58;border-radius:6px;padding:10px 16px;margin:10px 0 0}
+
+/* method cards */
+.mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+.mcard{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:16px 20px}
+.mcard h4{margin:0 0 4px;font-family:var(--mono);font-size:1rem}
+.mcard .role{color:var(--muted);font-size:.9rem;margin-bottom:6px}
+.mcard ol,.mcard ul{padding-left:1.3em;margin:6px 0 0;font-size:.92rem}
+.mcard li{margin:3px 0}
+
+dl.qa dt{font-weight:700;margin-top:18px}
+dl.qa dt::before{content:"Q. ";color:var(--accent)}
+dl.qa dd{margin:4px 0 0 0;padding-left:1.6em}
+dl.qa dd::before{content:"A. ";color:#2e8a58;font-weight:700;margin-left:-1.6em}
+
+footer{margin:60px 0 0;padding:26px 0 40px;border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="kicker">C# / Windows フォーム ・ 解説資料</p>
+    <h1>電卓プログラムのしくみ</h1>
+    <p class="lead">ボタンを1つ押すたびに、どのメソッドが動いて、どの変数に何が入るのか。<br>実際に電卓を動かしながら、Form1.cs の中身を1行ずつ追いかけます。</p>
+  </div>
+</header>
+
+<nav class="toc" aria-label="目次">
+  <ol>
+    <li><a href="#s1"><b>1</b>できること</a></li>
+    <li><a href="#s2"><b>2</b>全体の流れ</a></li>
+    <li><a href="#s3"><b>3</b>覚えている値</a></li>
+    <li><a href="#s4"><b>4</b>1つ遅れて計算</a></li>
+    <li><a href="#s5"><b>5</b>シミュレーター</a></li>
+    <li><a href="#s6"><b>6</b>入力例を追う</a></li>
+    <li><a href="#s7"><b>7</b>メソッド解説</a></li>
+    <li><a href="#s8"><b>8</b>C#の書き方</a></li>
+    <li><a href="#s9"><b>9</b>よくある疑問</a></li>
+  </ol>
+</nav>
+
+<main class="wrap">
+
+<!-- ===================== 1 ===================== -->
+<section class="sec" id="s1">
+  <h2><span class="no">1</span>この電卓でできること</h2>
+  <p>このプログラムは、Windows フォームで作った電卓です。ボタンを押したときの処理は、すべて <code>Form1</code> クラス（Form1.cs）の中に書かれています。</p>
+  <div class="card">
+    <ul class="tight">
+      <li>四則演算（＋ − × ÷）を「3+4×2…」のように続けて入力できる</li>
+      <li>計算は<b>押した順に左から</b>行う（×÷を先に計算するルールはない）</li>
+      <li>小数点（0.5 など）と、マイナスの数（3×-2 など）が入力できる</li>
+      <li>1つの数は最大 <b>8桁</b>。答えも8桁に収まるように四捨五入する</li>
+      <li>0で割ったときと、答えが8桁をこえたときはエラー表示になる</li>
+      <li>［C］で1文字消す、［CA］ですべてクリア</li>
+    </ul>
+  </div>
+  <p>画面には表示欄が2つあります。</p>
+  <div class="tblwrap"><table class="tbl">
+    <tr><th>場所</th><th>コントロールの名前</th><th>表示するもの</th></tr>
+    <tr><td>上の段（小さい文字）</td><td class="mono">expressionLabel</td><td>もう確定した式（例：<code>3+4×</code>）</td></tr>
+    <tr><td>下の段（大きい文字）</td><td class="mono">window</td><td>今入力している数、小計、答え、エラーメッセージ</td></tr>
+  </table></div>
+  <div class="note">
+    <b>このページで扱うのは Form1.cs だけです。</b>ボタンや表示欄を画面に並べるコードは、Visual Studio が自動で作る <code>Form1.Designer.cs</code> に入っています（今回の資料には含まれていません）。「b1 ボタンがクリックされたら <code>b1_Click</code> を呼ぶ」という結び付けも、ふつうはそちらに次のような形で書かれています。
+    <pre class="snip">this.b1.Click += new System.EventHandler(this.b1_Click);</pre>
+    フォームのデザイン画面でボタンをダブルクリックすると、この行と空の <code>b1_Click</code> メソッドが自動で作られます。
+  </div>
+</section>
+
+<!-- ===================== 2 ===================== -->
+<section class="sec" id="s2">
+  <h2><span class="no">2</span>全体の流れ：ボタンを押すと何が起きる？</h2>
+  <p>どのボタンも、だいたい同じ道を通ります。</p>
+  <div class="flow">
+    <div class="box"><b>① ボタンを押す</b><span>例：［3］ボタン</span></div>
+    <div class="arr">→</div>
+    <div class="box"><b>② 入口のメソッド</b><span>ボタンごとの <code>〇〇_Click</code>。例：<code>b3_Click</code></span></div>
+    <div class="arr">→</div>
+    <div class="box hot"><b>③ 共通の処理</b><span><code>AppendDigit</code>、<code>OperatorPressed</code> など。ここで値を書き換える</span></div>
+    <div class="arr">→</div>
+    <div class="box"><b>④ 画面を作り直す</b><span><code>ShowDisplay</code> が値を見て、上下の段に表示</span></div>
+  </div>
+  <p>ボタンと、呼ばれるメソッドの対応は次のとおりです。</p>
+  <div class="tblwrap"><table class="tbl">
+    <tr><th>ボタン</th><th>入口のメソッド</th><th>実際の処理をするメソッド</th></tr>
+    <tr><td>0〜9</td><td class="mono">b0_Click 〜 b9_Click</td><td class="mono">AppendDigit</td></tr>
+    <tr><td>.</td><td class="mono">dot_Click</td><td>dot_Click の中で処理</td></tr>
+    <tr><td>＋ − × ÷</td><td class="mono">add_Click / minus_Click / times_Click / divide_Click</td><td class="mono">OperatorPressed → Calculate</td></tr>
+    <tr><td>＝</td><td class="mono">Enter_Click</td><td class="mono">Calculate → FormatNumber</td></tr>
+    <tr><td>C</td><td class="mono">clear_Click</td><td>clear_Click の中で処理</td></tr>
+    <tr><td>CA</td><td class="mono">clearall_Click</td><td class="mono">ResetAll</td></tr>
+  </table></div>
+  <p>ほかに、裏方として使われるメソッドがあります：<code>ShowDisplay</code>（画面の更新）、<code>ResetAll</code>（全部リセット）、<code>ShowError</code>（エラー表示）、<code>FormatNumber</code>（数を表示用の文字にする）、<code>CountDigits</code>・<code>CountIntegerDigits</code>（桁数を数える）。</p>
+  <div class="key-idea">
+    <b class="t">ポイント：同じ処理は1か所にまとめる</b>
+    数字ボタンは10個ありますが、やることは「押された数字をつなげる」だけで同じです。そこで <code>b0_Click</code>〜<code>b9_Click</code> は、ボタンの文字（<code>this.b3.Text</code> なら <code>"3"</code>）を <code>AppendDigit</code> に渡すだけにしています。こうすると、直したいときも <code>AppendDigit</code> の1か所を直せば済みます。演算子ボタンと <code>OperatorPressed</code> の関係も同じです。
+  </div>
+  <div class="key-idea">
+    <b class="t">ポイント：画面は「値から作り直す」</b>
+    画面に文字を書き込むのは、基本的に <code>ShowDisplay</code> だけです（例外はエラーのときの <code>ShowError</code>）。各メソッドはまず変数の値を書き換え、最後に <code>ShowDisplay</code> を呼んで、今の値から画面を作り直します。逆に、途中で <code>return</code> して <code>ShowDisplay</code> を呼ばなかったときは、画面は変わりません。
+  </div>
+</section>
+
+<!-- ===================== 3 ===================== -->
+<section class="sec" id="s3">
+  <h2><span class="no">3</span>電卓が覚えている5つの値</h2>
+  <p>電卓は「ここまでに何が押されたか」を覚えておく必要があります。そのための変数が、クラスの先頭（<a class="lref" data-l="18">L18</a>〜<a class="lref" data-l="32">L32</a>）にある5つの<b>フィールド</b>です。このページでは、それぞれに色を付けて区別します。</p>
+  <div class="tblwrap"><table class="tbl">
+    <tr><th>名前</th><th>型</th><th>役割</th><th>最初の値</th><th>入る値の例</th></tr>
+    <tr><td><span class="v total">total</span></td><td class="mono">decimal</td><td>ここまでの計算結果（小計）</td><td class="mono">0</td><td>「3+4×」まで押すと <code>7</code></td></tr>
+    <tr><td><span class="v operation">operation</span></td><td class="mono">string</td><td>最後に押された演算子。まだ押していなければ空文字</td><td class="mono">""</td><td><code>"+"</code> <code>"-"</code> <code>"×"</code> <code>"÷"</code></td></tr>
+    <tr><td><span class="v expression">expression</span></td><td class="mono">string</td><td>上の段に表示する、確定した式</td><td class="mono">""</td><td><code>"3+4×"</code></td></tr>
+    <tr><td><span class="v currentInput">currentInput</span></td><td class="mono">string</td><td>今入力している途中の数</td><td class="mono">""</td><td><code>"12"</code> <code>"-"</code> <code>"0."</code></td></tr>
+    <tr><td><span class="v justCalculated">justCalculated</span></td><td class="mono">bool</td><td>［＝］を押した直後（答えが出ている状態）なら true</td><td class="mono">false</td><td><code>true</code> / <code>false</code></td></tr>
+  </table></div>
+
+  <h3>フィールドは、処理が終わっても値が残る</h3>
+  <p>メソッドの中で宣言した変数（たとえば <code>OperatorPressed</code> の中の <code>number</code> や <code>error</code>）は、そのメソッドが終わると消えてしまいます。一方、メソッドの外（クラスの中）に書いたフィールドは、フォームが開いている間ずっと値が残ります。だから「さっき押した＋」や「ここまでの小計」を、次のボタンを押したときに使えるのです。</p>
+
+  <h3>なぜ currentInput は数（decimal）ではなく文字列（string）？</h3>
+  <p>入力の途中には、<code>"0."</code> や <code>"-"</code> のように「まだ数として完成していない形」があります。数の型ではこれを表せません（<code>"0."</code> を数にすると 0 になり、点が消えてしまう）。そこで入力中は文字列のまま持っておき、計算するときだけ <code>decimal.TryParse</code> で数に変換しています。</p>
+
+  <h3>なぜ double ではなく decimal？</h3>
+  <p><code>double</code> はコンピューターの中で2進数として数を持つため、<code>0.1 + 0.2</code> が <code>0.30000000000000004</code> のようにずれることがあります。<code>decimal</code> は10進数として持つので、<code>0.1 + 0.2</code> はきちんと <code>0.3</code> になります。そのかわり扱える範囲は約28〜29桁までです。お金の計算や電卓のように「見たとおりの10進数で正確に計算したい」ときに向いています。</p>
+
+  <h3>決まった値（定数）</h3>
+  <p><code>const</code> を付けた値は、プログラムの途中で書き換えられません。数字やメッセージを直接書く代わりに名前を付けておくと、意味が分かりやすくなり、変えたいときも1か所を直すだけで済みます。</p>
+  <div class="tblwrap"><table class="tbl">
+    <tr><th>名前</th><th>値</th><th>使われ方</th></tr>
+    <tr><td class="mono">MaxExpressionLength</td><td class="mono">20</td><td>上の段に表示できる最大の文字数。これを超えたら先頭を「…」にする</td></tr>
+    <tr><td class="mono">MaxDigits</td><td class="mono">8</td><td>1つの数に使える最大の桁数。入力できる桁数と、答えを表示する桁数の両方に使う</td></tr>
+    <tr><td class="mono">DivideByZeroMessage</td><td class="mono">"(^o^)0ﾜﾙﾅ"</td><td>0で割ったときのメッセージ</td></tr>
+    <tr><td class="mono">OverflowMessage</td><td class="mono">"(^o^)ｹﾀｱﾌﾚ"</td><td>答えが8桁をこえたときのメッセージ</td></tr>
+  </table></div>
+</section>
+
+<!-- ===================== 4 ===================== -->
+<section class="sec" id="s4">
+  <h2><span class="no">4</span>いちばん大事な仕組み：演算子は「1つ遅れて」計算される</h2>
+  <p>［＋］を押した瞬間には、次に何の数が来るかまだ分かりません。だから、その場では計算できません。そこでこの電卓は、押された演算子をいったん <span class="v operation">operation</span> に覚えておき、<b>次の演算子か［＝］が押されたときに</b>、覚えていた演算子で計算します。</p>
+  <p>「3 + 4 × 2 =」と押したときの様子です。</p>
+  <div class="tblwrap"><table class="tbl delay">
+    <tr><th>押したボタン</th><td class="k">3</td><td class="k">+</td><td class="k">4</td><td class="k">×</td><td class="k">2</td><td class="k">=</td></tr>
+    <tr><th>その時に行う計算</th><td>—</td><td class="calc">total = 3<br><span class="muted" style="font-weight:400">（最初の数）</span></td><td>—</td><td class="calc">3 + 4 = 7<br><span class="muted" style="font-weight:400">（覚えていた ＋）</span></td><td>—</td><td class="calc">7 × 2 = 14<br><span class="muted" style="font-weight:400">（覚えていた ×）</span></td></tr>
+    <tr><th>operation に入る値</th><td class="mono">""</td><td class="mono">"+"</td><td class="mono">"+"</td><td class="mono">"×"</td><td class="mono">"×"</td><td class="mono">""<br><span class="muted">（リセット）</span></td></tr>
+  </table></div>
+  <p>だから 3+4×2 の答えは <b>14</b> になります。算数のルール（×を先に計算）なら 11 ですが、この電卓は一般的な電卓と同じく「押した順」に計算します。</p>
+  <p>コードでは、<code>OperatorPressed</code> の中のこの順番が、この仕組みを作っています。</p>
+<pre class="snip"><span class="mk">string error = Calculate(number);</span>   <span class="cm">// ① 先に、覚えていた演算子（operation）で計算する  … L225</span>
+   ︙
+expression = expression + currentInput + newOperation;
+<span class="mk">operation = newOperation;</span>           <span class="cm">// ② そのあとで、新しく押された演算子を覚える  … L241</span></pre>
+  <p>もし①と②の順番が逆だと、新しく押した演算子で計算してしまい、「3+4×」の時点で 3×4 になってしまいます。<code>Calculate</code> の中で使っている <span class="v operation">operation</span> は、<b>前に押した演算子</b>だという点が大切です。</p>
+</section>
+
+<!-- ===================== 5 ===================== -->
+<section class="sec" id="s5">
+  <h2><span class="no">5</span>シミュレーター：動かして確かめる</h2>
+  <p>Form1.cs と同じ処理を JavaScript で再現した電卓です。ボタンを押すと、右側に<b>変数の値</b>と<b>通った処理</b>が出て、下のソースコードの<b>通った行</b>に色が付きます。処理の行番号（<span class="lb" style="cursor:default">L123</span>）を押すと、その行に移動します。</p>
+  <p>下の「入力例」を選ぶと、1ステップずつ進めながら見られます。</p>
+
+  <div class="sim">
+    <div>
+      <div class="calc" id="calc">
+        <div class="disp">
+          <div class="row"><span class="tag">expressionLabel</span><div class="up" id="dUp"></div></div>
+          <div class="row"><span class="tag">window</span><div class="lo" id="dLo">0</div></div>
+        </div>
+        <div class="keys" id="keys">
+          <button class="key cl w2" data-k="CA">CA<small>clearall</small></button>
+          <button class="key cl" data-k="C">C<small>clear</small></button>
+          <button class="key op" data-k="÷">÷<small>divide</small></button>
+          <button class="key" data-k="7">7<small>b7</small></button>
+          <button class="key" data-k="8">8<small>b8</small></button>
+          <button class="key" data-k="9">9<small>b9</small></button>
+          <button class="key op" data-k="×">×<small>times</small></button>
+          <button class="key" data-k="4">4<small>b4</small></button>
+          <button class="key" data-k="5">5<small>b5</small></button>
+          <button class="key" data-k="6">6<small>b6</small></button>
+          <button class="key op" data-k="-">-<small>minus</small></button>
+          <button class="key" data-k="1">1<small>b1</small></button>
+          <button class="key" data-k="2">2<small>b2</small></button>
+          <button class="key" data-k="3">3<small>b3</small></button>
+          <button class="key op" data-k="+">+<small>add</small></button>
+          <button class="key" data-k="0">0<small>b0</small></button>
+          <button class="key" data-k=".">.<small>dot</small></button>
+          <button class="key eq w2" data-k="=">=<small>Enter</small></button>
+        </div>
+        <div class="calc-tools">
+          <label><input type="checkbox" id="showNames"> ボタンの名前を表示</label>
+          <button class="btn dark" id="restart">起動し直す</button>
+        </div>
+      </div>
+
+      <div class="player panel">
+        <h4>入力例を1ステップずつ再生</h4>
+        <div class="chips" id="chips"></div>
+        <div id="playerBody" style="display:none">
+          <div class="seq" id="seq"></div>
+          <div class="ctrl">
+            <button class="btn primary" id="next">次へ ▶</button>
+            <button class="btn" id="again">最初から</button>
+          </div>
+          <div class="stepnote" id="stepnote"></div>
+        </div>
+        <p class="muted" id="freeMsg" style="font-size:.85rem;margin:8px 0 0">電卓のボタンを自由に押すこともできます。</p>
+        <div class="history">押したボタン：<span class="mono" id="hist">（まだなし）</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <h4>覚えている値（フィールド）<small>黄色＝今のボタンで変わった値</small></h4>
+        <table class="vars" id="vars"></table>
+      </div>
+      <div class="panel">
+        <h4>今のボタンで通った処理<small>字下げ＝呼び出されたメソッドの中</small></h4>
+        <ol class="trace" id="trace"></ol>
+      </div>
+    </div>
+  </div>
+
+  <h3 id="codeTitle">ソースコード（Form1.cs）</h3>
+  <div class="codebox" id="code"><div class="ln" id="L1"><span class="no">1</span><span class="tx"><span class="k">using</span> System;</span></div><div class="ln" id="L2"><span class="no">2</span><span class="tx"><span class="k">using</span> System.Collections.Generic;</span></div><div class="ln" id="L3"><span class="no">3</span><span class="tx"><span class="k">using</span> System.ComponentModel;</span></div><div class="ln" id="L4"><span class="no">4</span><span class="tx"><span class="k">using</span> System.Data;</span></div><div class="ln" id="L5"><span class="no">5</span><span class="tx"><span class="k">using</span> System.Drawing;</span></div><div class="ln" id="L6"><span class="no">6</span><span class="tx"><span class="k">using</span> System.Linq;</span></div><div class="ln" id="L7"><span class="no">7</span><span class="tx"><span class="k">using</span> System.Text;</span></div><div class="ln" id="L8"><span class="no">8</span><span class="tx"><span class="k">using</span> System.Threading.Tasks;</span></div><div class="ln" id="L9"><span class="no">9</span><span class="tx"><span class="k">using</span> System.Windows.Forms;</span></div><div class="ln" id="L10"><span class="no">10</span><span class="tx"> </span></div><div class="ln" id="L11"><span class="no">11</span><span class="tx"><span class="k">namespace</span> WindowsFormsApplication1</span></div><div class="ln" id="L12"><span class="no">12</span><span class="tx">{</span></div><div class="ln" id="L13"><span class="no">13</span><span class="tx">    <span class="k">public</span> <span class="k">partial</span> <span class="k">class</span> Form1 : Form</span></div><div class="ln" id="L14"><span class="no">14</span><span class="tx">    {</span></div><div class="ln" id="L15"><span class="no">15</span><span class="tx">        <span class="cm">// ===== 電卓が覚えておく値 =====</span></span></div><div class="ln" id="L16"><span class="no">16</span><span class="tx"> </span></div><div class="ln" id="L17"><span class="no">17</span><span class="tx">        <span class="cm">// ここまでの計算結果（例：「3+4+」まで入力したら 7）</span></span></div><div class="ln" id="L18"><span class="no">18</span><span class="tx">        <span class="k">private</span> <span class="k">decimal</span> total = 0;</span></div><div class="ln" id="L19"><span class="no">19</span><span class="tx"> </span></div><div class="ln" id="L20"><span class="no">20</span><span class="tx">        <span class="cm">// 最後に押された演算子（&quot;+&quot; &quot;-&quot; &quot;×&quot; &quot;÷&quot;）。まだ何も押されていなければ空文字 &quot;&quot;</span></span></div><div class="ln" id="L21"><span class="no">21</span><span class="tx">        <span class="cm">// 画面に表示する記号をそのまま使っています</span></span></div><div class="ln" id="L22"><span class="no">22</span><span class="tx">        <span class="k">private</span> <span class="k">string</span> operation = <span class="s">&quot;&quot;</span>;</span></div><div class="ln" id="L23"><span class="no">23</span><span class="tx"> </span></div><div class="ln" id="L24"><span class="no">24</span><span class="tx">        <span class="cm">// 画面に表示する式のうち、もう確定した部分（例：&quot;3+4+&quot;）</span></span></div><div class="ln" id="L25"><span class="no">25</span><span class="tx">        <span class="k">private</span> <span class="k">string</span> expression = <span class="s">&quot;&quot;</span>;</span></div><div class="ln" id="L26"><span class="no">26</span><span class="tx"> </span></div><div class="ln" id="L27"><span class="no">27</span><span class="tx">        <span class="cm">// 今入力している途中の数（例：&quot;5&quot;、&quot;-2&quot;、&quot;0.&quot;）</span></span></div><div class="ln" id="L28"><span class="no">28</span><span class="tx">        <span class="cm">// 文字列で持つのは、&quot;0.&quot; や &quot;-&quot; のような「入力途中の形」も表示したいから</span></span></div><div class="ln" id="L29"><span class="no">29</span><span class="tx">        <span class="k">private</span> <span class="k">string</span> currentInput = <span class="s">&quot;&quot;</span>;</span></div><div class="ln" id="L30"><span class="no">30</span><span class="tx"> </span></div><div class="ln" id="L31"><span class="no">31</span><span class="tx">        <span class="cm">// true のとき、［＝］を押した直後（画面に答えが出ている状態）</span></span></div><div class="ln" id="L32"><span class="no">32</span><span class="tx">        <span class="k">private</span> <span class="k">bool</span> justCalculated = <span class="k">false</span>;</span></div><div class="ln" id="L33"><span class="no">33</span><span class="tx"> </span></div><div class="ln" id="L34"><span class="no">34</span><span class="tx">        <span class="cm">// 上の段に表示できる最大の文字数（ラベルの幅に合わせて調整してください）</span></span></div><div class="ln" id="L35"><span class="no">35</span><span class="tx">        <span class="k">private</span> <span class="k">const</span> <span class="k">int</span> MaxExpressionLength = 20;</span></div><div class="ln" id="L36"><span class="no">36</span><span class="tx"> </span></div><div class="ln" id="L37"><span class="no">37</span><span class="tx">        <span class="cm">// 1つの数に使える最大の桁数（★桁あふれ対策で追加）</span></span></div><div class="ln" id="L38"><span class="no">38</span><span class="tx">        <span class="cm">// 入力できる桁数と、答えを表示する桁数の両方に使います</span></span></div><div class="ln" id="L39"><span class="no">39</span><span class="tx">        <span class="cm">// 下の段の表示欄に「-1234567890.」が収まるかを目安に調整してください</span></span></div><div class="ln" id="L40"><span class="no">40</span><span class="tx">        <span class="k">private</span> <span class="k">const</span> <span class="k">int</span> MaxDigits = 8;</span></div><div class="ln" id="L41"><span class="no">41</span><span class="tx"> </span></div><div class="ln" id="L42"><span class="no">42</span><span class="tx">        <span class="cm">// エラーのときに表示する文字（★桁あふれ対策で追加）</span></span></div><div class="ln" id="L43"><span class="no">43</span><span class="tx">        <span class="k">private</span> <span class="k">const</span> <span class="k">string</span> DivideByZeroMessage = <span class="s">&quot;(^o^)0ﾜﾙﾅ&quot;</span>;</span></div><div class="ln" id="L44"><span class="no">44</span><span class="tx">        <span class="k">private</span> <span class="k">const</span> <span class="k">string</span> OverflowMessage = <span class="s">&quot;(^o^)ｹﾀｱﾌﾚ&quot;</span>;</span></div><div class="ln" id="L45"><span class="no">45</span><span class="tx"> </span></div><div class="ln" id="L46"><span class="no">46</span><span class="tx">        <span class="cm">// 画面を作るときに、ボタンや表示欄などを準備する処理</span></span></div><div class="ln" id="L47"><span class="no">47</span><span class="tx">        <span class="k">public</span> Form1()</span></div><div class="ln" id="L48"><span class="no">48</span><span class="tx">        {</span></div><div class="ln" id="L49"><span class="no">49</span><span class="tx">            InitializeComponent();</span></div><div class="ln" id="L50"><span class="no">50</span><span class="tx">            ShowDisplay(); <span class="cm">// 最初は &quot;0&quot; を表示</span></span></div><div class="ln" id="L51"><span class="no">51</span><span class="tx">        }</span></div><div class="ln" id="L52"><span class="no">52</span><span class="tx"> </span></div><div class="ln" id="L53"><span class="no">53</span><span class="tx">        <span class="cm">// =====================================================</span></span></div><div class="ln" id="L54"><span class="no">54</span><span class="tx">        <span class="cm">// 数字ボタン</span></span></div><div class="ln" id="L55"><span class="no">55</span><span class="tx">        <span class="cm">// どのボタンも「押された数字を画面につなげる」だけなので、</span></span></div><div class="ln" id="L56"><span class="no">56</span><span class="tx">        <span class="cm">// 実際の処理は AppendDigit にまとめています。</span></span></div><div class="ln" id="L57"><span class="no">57</span><span class="tx">        <span class="cm">// =====================================================</span></span></div><div class="ln" id="L58"><span class="no">58</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> b0_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L59"><span class="no">59</span><span class="tx">        {</span></div><div class="ln" id="L60"><span class="no">60</span><span class="tx">            AppendDigit(<span class="k">this</span>.b0.Text);</span></div><div class="ln" id="L61"><span class="no">61</span><span class="tx">        }</span></div><div class="ln" id="L62"><span class="no">62</span><span class="tx"> </span></div><div class="ln" id="L63"><span class="no">63</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> b1_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L64"><span class="no">64</span><span class="tx">        {</span></div><div class="ln" id="L65"><span class="no">65</span><span class="tx">            AppendDigit(<span class="k">this</span>.b1.Text);</span></div><div class="ln" id="L66"><span class="no">66</span><span class="tx">        }</span></div><div class="ln" id="L67"><span class="no">67</span><span class="tx"> </span></div><div class="ln" id="L68"><span class="no">68</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> b2_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L69"><span class="no">69</span><span class="tx">        {</span></div><div class="ln" id="L70"><span class="no">70</span><span class="tx">            AppendDigit(<span class="k">this</span>.b2.Text);</span></div><div class="ln" id="L71"><span class="no">71</span><span class="tx">        }</span></div><div class="ln" id="L72"><span class="no">72</span><span class="tx"> </span></div><div class="ln" id="L73"><span class="no">73</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> b3_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L74"><span class="no">74</span><span class="tx">        {</span></div><div class="ln" id="L75"><span class="no">75</span><span class="tx">            AppendDigit(<span class="k">this</span>.b3.Text);</span></div><div class="ln" id="L76"><span class="no">76</span><span class="tx">        }</span></div><div class="ln" id="L77"><span class="no">77</span><span class="tx"> </span></div><div class="ln" id="L78"><span class="no">78</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> b4_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L79"><span class="no">79</span><span class="tx">        {</span></div><div class="ln" id="L80"><span class="no">80</span><span class="tx">            AppendDigit(<span class="k">this</span>.b4.Text);</span></div><div class="ln" id="L81"><span class="no">81</span><span class="tx">        }</span></div><div class="ln" id="L82"><span class="no">82</span><span class="tx"> </span></div><div class="ln" id="L83"><span class="no">83</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> b5_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L84"><span class="no">84</span><span class="tx">        {</span></div><div class="ln" id="L85"><span class="no">85</span><span class="tx">            AppendDigit(<span class="k">this</span>.b5.Text);</span></div><div class="ln" id="L86"><span class="no">86</span><span class="tx">        }</span></div><div class="ln" id="L87"><span class="no">87</span><span class="tx"> </span></div><div class="ln" id="L88"><span class="no">88</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> b6_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L89"><span class="no">89</span><span class="tx">        {</span></div><div class="ln" id="L90"><span class="no">90</span><span class="tx">            AppendDigit(<span class="k">this</span>.b6.Text);</span></div><div class="ln" id="L91"><span class="no">91</span><span class="tx">        }</span></div><div class="ln" id="L92"><span class="no">92</span><span class="tx"> </span></div><div class="ln" id="L93"><span class="no">93</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> b7_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L94"><span class="no">94</span><span class="tx">        {</span></div><div class="ln" id="L95"><span class="no">95</span><span class="tx">            AppendDigit(<span class="k">this</span>.b7.Text);</span></div><div class="ln" id="L96"><span class="no">96</span><span class="tx">        }</span></div><div class="ln" id="L97"><span class="no">97</span><span class="tx"> </span></div><div class="ln" id="L98"><span class="no">98</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> b8_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L99"><span class="no">99</span><span class="tx">        {</span></div><div class="ln" id="L100"><span class="no">100</span><span class="tx">            AppendDigit(<span class="k">this</span>.b8.Text);</span></div><div class="ln" id="L101"><span class="no">101</span><span class="tx">        }</span></div><div class="ln" id="L102"><span class="no">102</span><span class="tx"> </span></div><div class="ln" id="L103"><span class="no">103</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> b9_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L104"><span class="no">104</span><span class="tx">        {</span></div><div class="ln" id="L105"><span class="no">105</span><span class="tx">            AppendDigit(<span class="k">this</span>.b9.Text);</span></div><div class="ln" id="L106"><span class="no">106</span><span class="tx">        }</span></div><div class="ln" id="L107"><span class="no">107</span><span class="tx"> </span></div><div class="ln" id="L108"><span class="no">108</span><span class="tx">        <span class="cm">// 数字を1つ入力する処理（数字ボタン共通）</span></span></div><div class="ln" id="L109"><span class="no">109</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> AppendDigit(<span class="k">string</span> digit)</span></div><div class="ln" id="L110"><span class="no">110</span><span class="tx">        {</span></div><div class="ln" id="L111"><span class="no">111</span><span class="tx">            <span class="cm">// 答えが出ている状態で数字を押したら、新しい計算を始める</span></span></div><div class="ln" id="L112"><span class="no">112</span><span class="tx">            <span class="k">if</span> (justCalculated)</span></div><div class="ln" id="L113"><span class="no">113</span><span class="tx">            {</span></div><div class="ln" id="L114"><span class="no">114</span><span class="tx">                ResetAll();</span></div><div class="ln" id="L115"><span class="no">115</span><span class="tx">            }</span></div><div class="ln" id="L116"><span class="no">116</span><span class="tx"> </span></div><div class="ln" id="L117"><span class="no">117</span><span class="tx">            <span class="cm">// 「0」や「-0」の後ろにつなげると &quot;05&quot; のようになってしまうので、先に 0 を消す</span></span></div><div class="ln" id="L118"><span class="no">118</span><span class="tx">            <span class="k">if</span> (currentInput == <span class="s">&quot;0&quot;</span>)</span></div><div class="ln" id="L119"><span class="no">119</span><span class="tx">            {</span></div><div class="ln" id="L120"><span class="no">120</span><span class="tx">                currentInput = <span class="s">&quot;&quot;</span>;</span></div><div class="ln" id="L121"><span class="no">121</span><span class="tx">            }</span></div><div class="ln" id="L122"><span class="no">122</span><span class="tx">            <span class="k">else</span> <span class="k">if</span> (currentInput == <span class="s">&quot;-0&quot;</span>)</span></div><div class="ln" id="L123"><span class="no">123</span><span class="tx">            {</span></div><div class="ln" id="L124"><span class="no">124</span><span class="tx">                currentInput = <span class="s">&quot;-&quot;</span>;</span></div><div class="ln" id="L125"><span class="no">125</span><span class="tx">            }</span></div><div class="ln" id="L126"><span class="no">126</span><span class="tx"> </span></div><div class="ln" id="L127"><span class="no">127</span><span class="tx">            <span class="cm">// もう最大の桁数まで入力していたら、それ以上は受け付けない（★桁あふれ対策）</span></span></div><div class="ln" id="L128"><span class="no">128</span><span class="tx">            <span class="k">if</span> (CountDigits(currentInput) &gt;= MaxDigits)</span></div><div class="ln" id="L129"><span class="no">129</span><span class="tx">            {</span></div><div class="ln" id="L130"><span class="no">130</span><span class="tx">                <span class="k">return</span>;</span></div><div class="ln" id="L131"><span class="no">131</span><span class="tx">            }</span></div><div class="ln" id="L132"><span class="no">132</span><span class="tx"> </span></div><div class="ln" id="L133"><span class="no">133</span><span class="tx">            <span class="cm">// 今の数の右側に数字をつなげる（例：&quot;1&quot; + &quot;2&quot; → &quot;12&quot;）</span></span></div><div class="ln" id="L134"><span class="no">134</span><span class="tx">            currentInput = currentInput + digit;</span></div><div class="ln" id="L135"><span class="no">135</span><span class="tx">            ShowDisplay();</span></div><div class="ln" id="L136"><span class="no">136</span><span class="tx">        }</span></div><div class="ln" id="L137"><span class="no">137</span><span class="tx"> </span></div><div class="ln" id="L138"><span class="no">138</span><span class="tx">        <span class="cm">// =====================================================</span></span></div><div class="ln" id="L139"><span class="no">139</span><span class="tx">        <span class="cm">// ［.］小数点ボタン（★新しく追加）</span></span></div><div class="ln" id="L140"><span class="no">140</span><span class="tx">        <span class="cm">// =====================================================</span></span></div><div class="ln" id="L141"><span class="no">141</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> dot_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L142"><span class="no">142</span><span class="tx">        {</span></div><div class="ln" id="L143"><span class="no">143</span><span class="tx">            <span class="cm">// 答えが出ている状態で押したら、新しい計算を始める</span></span></div><div class="ln" id="L144"><span class="no">144</span><span class="tx">            <span class="k">if</span> (justCalculated)</span></div><div class="ln" id="L145"><span class="no">145</span><span class="tx">            {</span></div><div class="ln" id="L146"><span class="no">146</span><span class="tx">                ResetAll();</span></div><div class="ln" id="L147"><span class="no">147</span><span class="tx">            }</span></div><div class="ln" id="L148"><span class="no">148</span><span class="tx"> </span></div><div class="ln" id="L149"><span class="no">149</span><span class="tx">            <span class="cm">// 小数点は1つの数に1回だけ（&quot;1.2.3&quot; にならないようにする）</span></span></div><div class="ln" id="L150"><span class="no">150</span><span class="tx">            <span class="k">if</span> (currentInput.Contains(<span class="s">&quot;.&quot;</span>))</span></div><div class="ln" id="L151"><span class="no">151</span><span class="tx">            {</span></div><div class="ln" id="L152"><span class="no">152</span><span class="tx">                <span class="k">return</span>;</span></div><div class="ln" id="L153"><span class="no">153</span><span class="tx">            }</span></div><div class="ln" id="L154"><span class="no">154</span><span class="tx"> </span></div><div class="ln" id="L155"><span class="no">155</span><span class="tx">            <span class="cm">// まだ数字がないときは「0.」にする（&quot;-&quot; だけのときは「-0.」）</span></span></div><div class="ln" id="L156"><span class="no">156</span><span class="tx">            <span class="k">if</span> (currentInput == <span class="s">&quot;&quot;</span> || currentInput == <span class="s">&quot;-&quot;</span>)</span></div><div class="ln" id="L157"><span class="no">157</span><span class="tx">            {</span></div><div class="ln" id="L158"><span class="no">158</span><span class="tx">                currentInput = currentInput + <span class="s">&quot;0&quot;</span>;</span></div><div class="ln" id="L159"><span class="no">159</span><span class="tx">            }</span></div><div class="ln" id="L160"><span class="no">160</span><span class="tx"> </span></div><div class="ln" id="L161"><span class="no">161</span><span class="tx">            currentInput = currentInput + <span class="s">&quot;.&quot;</span>;</span></div><div class="ln" id="L162"><span class="no">162</span><span class="tx">            ShowDisplay();</span></div><div class="ln" id="L163"><span class="no">163</span><span class="tx">        }</span></div><div class="ln" id="L164"><span class="no">164</span><span class="tx"> </span></div><div class="ln" id="L165"><span class="no">165</span><span class="tx">        <span class="cm">// =====================================================</span></span></div><div class="ln" id="L166"><span class="no">166</span><span class="tx">        <span class="cm">// 演算子ボタン</span></span></div><div class="ln" id="L167"><span class="no">167</span><span class="tx">        <span class="cm">// =====================================================</span></span></div><div class="ln" id="L168"><span class="no">168</span><span class="tx">        <span class="cm">// ［＋］</span></span></div><div class="ln" id="L169"><span class="no">169</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> add_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L170"><span class="no">170</span><span class="tx">        {</span></div><div class="ln" id="L171"><span class="no">171</span><span class="tx">            OperatorPressed(<span class="s">&quot;+&quot;</span>);</span></div><div class="ln" id="L172"><span class="no">172</span><span class="tx">        }</span></div><div class="ln" id="L173"><span class="no">173</span><span class="tx"> </span></div><div class="ln" id="L174"><span class="no">174</span><span class="tx">        <span class="cm">// ［-］</span></span></div><div class="ln" id="L175"><span class="no">175</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> minus_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L176"><span class="no">176</span><span class="tx">        {</span></div><div class="ln" id="L177"><span class="no">177</span><span class="tx">            OperatorPressed(<span class="s">&quot;-&quot;</span>);</span></div><div class="ln" id="L178"><span class="no">178</span><span class="tx">        }</span></div><div class="ln" id="L179"><span class="no">179</span><span class="tx"> </span></div><div class="ln" id="L180"><span class="no">180</span><span class="tx">        <span class="cm">// ［×］</span></span></div><div class="ln" id="L181"><span class="no">181</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> times_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L182"><span class="no">182</span><span class="tx">        {</span></div><div class="ln" id="L183"><span class="no">183</span><span class="tx">            OperatorPressed(<span class="s">&quot;×&quot;</span>);</span></div><div class="ln" id="L184"><span class="no">184</span><span class="tx">        }</span></div><div class="ln" id="L185"><span class="no">185</span><span class="tx"> </span></div><div class="ln" id="L186"><span class="no">186</span><span class="tx">        <span class="cm">// ［÷］</span></span></div><div class="ln" id="L187"><span class="no">187</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> divide_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L188"><span class="no">188</span><span class="tx">        {</span></div><div class="ln" id="L189"><span class="no">189</span><span class="tx">            OperatorPressed(<span class="s">&quot;÷&quot;</span>);</span></div><div class="ln" id="L190"><span class="no">190</span><span class="tx">        }</span></div><div class="ln" id="L191"><span class="no">191</span><span class="tx"> </span></div><div class="ln" id="L192"><span class="no">192</span><span class="tx">        <span class="cm">// 演算子ボタンが押されたときの共通処理</span></span></div><div class="ln" id="L193"><span class="no">193</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> OperatorPressed(<span class="k">string</span> newOperation)</span></div><div class="ln" id="L194"><span class="no">194</span><span class="tx">        {</span></div><div class="ln" id="L195"><span class="no">195</span><span class="tx">            <span class="cm">// ----- まだ数を入力していないとき -----</span></span></div><div class="ln" id="L196"><span class="no">196</span><span class="tx">            <span class="k">if</span> (currentInput == <span class="s">&quot;&quot;</span>)</span></div><div class="ln" id="L197"><span class="no">197</span><span class="tx">            {</span></div><div class="ln" id="L198"><span class="no">198</span><span class="tx">                <span class="k">if</span> (newOperation == <span class="s">&quot;-&quot;</span>)</span></div><div class="ln" id="L199"><span class="no">199</span><span class="tx">                {</span></div><div class="ln" id="L200"><span class="no">200</span><span class="tx">                    <span class="cm">// 「-」は「マイナスの数の入力開始」として使う（例：「-2」「3×-2」）</span></span></div><div class="ln" id="L201"><span class="no">201</span><span class="tx">                    currentInput = <span class="s">&quot;-&quot;</span>;</span></div><div class="ln" id="L202"><span class="no">202</span><span class="tx">                    ShowDisplay();</span></div><div class="ln" id="L203"><span class="no">203</span><span class="tx">                }</span></div><div class="ln" id="L204"><span class="no">204</span><span class="tx">                <span class="k">else</span> <span class="k">if</span> (operation != <span class="s">&quot;&quot;</span>)</span></div><div class="ln" id="L205"><span class="no">205</span><span class="tx">                {</span></div><div class="ln" id="L206"><span class="no">206</span><span class="tx">                    <span class="cm">// 演算子を続けて押したときは、最後の演算子を入れ替える（例：&quot;3+&quot; → &quot;3×&quot;）</span></span></div><div class="ln" id="L207"><span class="no">207</span><span class="tx">                    <span class="cm">// Substring(0, 長さ - 1) は「最後の1文字を除いた部分」</span></span></div><div class="ln" id="L208"><span class="no">208</span><span class="tx">                    expression = expression.Substring(0, expression.Length - 1) + newOperation;</span></div><div class="ln" id="L209"><span class="no">209</span><span class="tx">                    operation = newOperation;</span></div><div class="ln" id="L210"><span class="no">210</span><span class="tx">                    ShowDisplay();</span></div><div class="ln" id="L211"><span class="no">211</span><span class="tx">                }</span></div><div class="ln" id="L212"><span class="no">212</span><span class="tx">                <span class="k">return</span>;</span></div><div class="ln" id="L213"><span class="no">213</span><span class="tx">            }</span></div><div class="ln" id="L214"><span class="no">214</span><span class="tx"> </span></div><div class="ln" id="L215"><span class="no">215</span><span class="tx">            <span class="cm">// 今の数を数値に変換する（&quot;-&quot; だけのように、まだ数字がないときは何もしない）</span></span></div><div class="ln" id="L216"><span class="no">216</span><span class="tx">            <span class="k">decimal</span> number;</span></div><div class="ln" id="L217"><span class="no">217</span><span class="tx">            <span class="k">if</span> (<span class="k">decimal</span>.TryParse(currentInput, <span class="k">out</span> number) == <span class="k">false</span>)</span></div><div class="ln" id="L218"><span class="no">218</span><span class="tx">            {</span></div><div class="ln" id="L219"><span class="no">219</span><span class="tx">                <span class="k">return</span>;</span></div><div class="ln" id="L220"><span class="no">220</span><span class="tx">            }</span></div><div class="ln" id="L221"><span class="no">221</span><span class="tx"> </span></div><div class="ln" id="L222"><span class="no">222</span><span class="tx">            <span class="cm">// ここまでの結果と今の数を計算する</span></span></div><div class="ln" id="L223"><span class="no">223</span><span class="tx">            <span class="cm">// 演算子を押すたびに1つずつ計算するので、A+B+C+... と続けられる</span></span></div><div class="ln" id="L224"><span class="no">224</span><span class="tx">            <span class="cm">// 計算できなかったときは、エラーメッセージが返ってくる（★桁あふれ対策で変更）</span></span></div><div class="ln" id="L225"><span class="no">225</span><span class="tx">            <span class="k">string</span> error = Calculate(number);</span></div><div class="ln" id="L226"><span class="no">226</span><span class="tx">            <span class="k">if</span> (error != <span class="s">&quot;&quot;</span>)</span></div><div class="ln" id="L227"><span class="no">227</span><span class="tx">            {</span></div><div class="ln" id="L228"><span class="no">228</span><span class="tx">                ShowError(error);</span></div><div class="ln" id="L229"><span class="no">229</span><span class="tx">                <span class="k">return</span>;</span></div><div class="ln" id="L230"><span class="no">230</span><span class="tx">            }</span></div><div class="ln" id="L231"><span class="no">231</span><span class="tx"> </span></div><div class="ln" id="L232"><span class="no">232</span><span class="tx">            <span class="cm">// 「0.」のように小数点で終わっているときは、最後の「.」を消す（★修正）</span></span></div><div class="ln" id="L233"><span class="no">233</span><span class="tx">            <span class="cm">// そのままだと式が &quot;0.-&quot; や &quot;5.+&quot; のようになってしまうため</span></span></div><div class="ln" id="L234"><span class="no">234</span><span class="tx">            <span class="k">if</span> (currentInput.EndsWith(<span class="s">&quot;.&quot;</span>))</span></div><div class="ln" id="L235"><span class="no">235</span><span class="tx">            {</span></div><div class="ln" id="L236"><span class="no">236</span><span class="tx">                currentInput = currentInput.Substring(0, currentInput.Length - 1);</span></div><div class="ln" id="L237"><span class="no">237</span><span class="tx">            }</span></div><div class="ln" id="L238"><span class="no">238</span><span class="tx"> </span></div><div class="ln" id="L239"><span class="no">239</span><span class="tx">            <span class="cm">// 式に「今の数」と「演算子」を付け足す（例：&quot;3+&quot; → &quot;3+4+&quot;）</span></span></div><div class="ln" id="L240"><span class="no">240</span><span class="tx">            expression = expression + currentInput + newOperation;</span></div><div class="ln" id="L241"><span class="no">241</span><span class="tx">            operation = newOperation;</span></div><div class="ln" id="L242"><span class="no">242</span><span class="tx">            currentInput = <span class="s">&quot;&quot;</span>;</span></div><div class="ln" id="L243"><span class="no">243</span><span class="tx">            justCalculated = <span class="k">false</span>;</span></div><div class="ln" id="L244"><span class="no">244</span><span class="tx">            ShowDisplay();</span></div><div class="ln" id="L245"><span class="no">245</span><span class="tx">        }</span></div><div class="ln" id="L246"><span class="no">246</span><span class="tx"> </span></div><div class="ln" id="L247"><span class="no">247</span><span class="tx">        <span class="cm">// ［＝］</span></span></div><div class="ln" id="L248"><span class="no">248</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> Enter_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L249"><span class="no">249</span><span class="tx">        {</span></div><div class="ln" id="L250"><span class="no">250</span><span class="tx">            <span class="cm">// 演算子がまだ押されていないときは、計算するものがないので何もしない</span></span></div><div class="ln" id="L251"><span class="no">251</span><span class="tx">            <span class="k">if</span> (operation == <span class="s">&quot;&quot;</span>)</span></div><div class="ln" id="L252"><span class="no">252</span><span class="tx">            {</span></div><div class="ln" id="L253"><span class="no">253</span><span class="tx">                <span class="k">return</span>;</span></div><div class="ln" id="L254"><span class="no">254</span><span class="tx">            }</span></div><div class="ln" id="L255"><span class="no">255</span><span class="tx"> </span></div><div class="ln" id="L256"><span class="no">256</span><span class="tx">            <span class="cm">// &quot;3+&quot; のように最後の数がまだないときも何もしない</span></span></div><div class="ln" id="L257"><span class="no">257</span><span class="tx">            <span class="k">decimal</span> number;</span></div><div class="ln" id="L258"><span class="no">258</span><span class="tx">            <span class="k">if</span> (<span class="k">decimal</span>.TryParse(currentInput, <span class="k">out</span> number) == <span class="k">false</span>)</span></div><div class="ln" id="L259"><span class="no">259</span><span class="tx">            {</span></div><div class="ln" id="L260"><span class="no">260</span><span class="tx">                <span class="k">return</span>;</span></div><div class="ln" id="L261"><span class="no">261</span><span class="tx">            }</span></div><div class="ln" id="L262"><span class="no">262</span><span class="tx"> </span></div><div class="ln" id="L263"><span class="no">263</span><span class="tx">            <span class="cm">// 計算できなかったときは、エラーメッセージが返ってくる（★桁あふれ対策で変更）</span></span></div><div class="ln" id="L264"><span class="no">264</span><span class="tx">            <span class="k">string</span> error = Calculate(number);</span></div><div class="ln" id="L265"><span class="no">265</span><span class="tx">            <span class="k">if</span> (error != <span class="s">&quot;&quot;</span>)</span></div><div class="ln" id="L266"><span class="no">266</span><span class="tx">            {</span></div><div class="ln" id="L267"><span class="no">267</span><span class="tx">                ShowError(error);</span></div><div class="ln" id="L268"><span class="no">268</span><span class="tx">                <span class="k">return</span>;</span></div><div class="ln" id="L269"><span class="no">269</span><span class="tx">            }</span></div><div class="ln" id="L270"><span class="no">270</span><span class="tx"> </span></div><div class="ln" id="L271"><span class="no">271</span><span class="tx">            <span class="cm">// 答えを「今入力している数」として持っておく</span></span></div><div class="ln" id="L272"><span class="no">272</span><span class="tx">            <span class="cm">// FormatNumber で表示できる桁数に丸めた値になる</span></span></div><div class="ln" id="L273"><span class="no">273</span><span class="tx">            <span class="cm">// → 続けて［＋］などを押すと、答えを使って計算を続けられる</span></span></div><div class="ln" id="L274"><span class="no">274</span><span class="tx">            <span class="k">string</span> answer = FormatNumber(total);</span></div><div class="ln" id="L275"><span class="no">275</span><span class="tx">            ResetAll();</span></div><div class="ln" id="L276"><span class="no">276</span><span class="tx">            currentInput = answer;</span></div><div class="ln" id="L277"><span class="no">277</span><span class="tx">            justCalculated = <span class="k">true</span>;</span></div><div class="ln" id="L278"><span class="no">278</span><span class="tx">            ShowDisplay();</span></div><div class="ln" id="L279"><span class="no">279</span><span class="tx">        }</span></div><div class="ln" id="L280"><span class="no">280</span><span class="tx"> </span></div><div class="ln" id="L281"><span class="no">281</span><span class="tx">        <span class="cm">// =====================================================</span></span></div><div class="ln" id="L282"><span class="no">282</span><span class="tx">        <span class="cm">// 計算する処理</span></span></div><div class="ln" id="L283"><span class="no">283</span><span class="tx">        <span class="cm">// 「total（ここまでの結果）」と「number」を、保存した演算子で計算して total に入れる</span></span></div><div class="ln" id="L284"><span class="no">284</span><span class="tx">        <span class="cm">// 戻り値（★桁あふれ対策で変更）：</span></span></div><div class="ln" id="L285"><span class="no">285</span><span class="tx">        <span class="cm">//   うまく計算できたら &quot;&quot;（空文字）、できなかったらエラーメッセージ</span></span></div><div class="ln" id="L286"><span class="no">286</span><span class="tx">        <span class="cm">// =====================================================</span></span></div><div class="ln" id="L287"><span class="no">287</span><span class="tx">        <span class="k">private</span> <span class="k">string</span> Calculate(<span class="k">decimal</span> number)</span></div><div class="ln" id="L288"><span class="no">288</span><span class="tx">        {</span></div><div class="ln" id="L289"><span class="no">289</span><span class="tx">            <span class="cm">// try の中でエラー（例外）が起きると、catch に飛ぶ</span></span></div><div class="ln" id="L290"><span class="no">290</span><span class="tx">            <span class="cm">// → アプリが落ちずに、エラー表示にできる</span></span></div><div class="ln" id="L291"><span class="no">291</span><span class="tx">            <span class="k">try</span></span></div><div class="ln" id="L292"><span class="no">292</span><span class="tx">            {</span></div><div class="ln" id="L293"><span class="no">293</span><span class="tx">                <span class="k">if</span> (operation == <span class="s">&quot;&quot;</span>)</span></div><div class="ln" id="L294"><span class="no">294</span><span class="tx">                {</span></div><div class="ln" id="L295"><span class="no">295</span><span class="tx">                    <span class="cm">// 最初の数のときは、そのまま覚えるだけ</span></span></div><div class="ln" id="L296"><span class="no">296</span><span class="tx">                    total = number;</span></div><div class="ln" id="L297"><span class="no">297</span><span class="tx">                }</span></div><div class="ln" id="L298"><span class="no">298</span><span class="tx">                <span class="k">else</span> <span class="k">if</span> (operation == <span class="s">&quot;+&quot;</span>)</span></div><div class="ln" id="L299"><span class="no">299</span><span class="tx">                {</span></div><div class="ln" id="L300"><span class="no">300</span><span class="tx">                    total = total + number;</span></div><div class="ln" id="L301"><span class="no">301</span><span class="tx">                }</span></div><div class="ln" id="L302"><span class="no">302</span><span class="tx">                <span class="k">else</span> <span class="k">if</span> (operation == <span class="s">&quot;-&quot;</span>)</span></div><div class="ln" id="L303"><span class="no">303</span><span class="tx">                {</span></div><div class="ln" id="L304"><span class="no">304</span><span class="tx">                    total = total - number;</span></div><div class="ln" id="L305"><span class="no">305</span><span class="tx">                }</span></div><div class="ln" id="L306"><span class="no">306</span><span class="tx">                <span class="k">else</span> <span class="k">if</span> (operation == <span class="s">&quot;×&quot;</span>)</span></div><div class="ln" id="L307"><span class="no">307</span><span class="tx">                {</span></div><div class="ln" id="L308"><span class="no">308</span><span class="tx">                    total = total * number;</span></div><div class="ln" id="L309"><span class="no">309</span><span class="tx">                }</span></div><div class="ln" id="L310"><span class="no">310</span><span class="tx">                <span class="k">else</span> <span class="k">if</span> (operation == <span class="s">&quot;÷&quot;</span>)</span></div><div class="ln" id="L311"><span class="no">311</span><span class="tx">                {</span></div><div class="ln" id="L312"><span class="no">312</span><span class="tx">                    <span class="cm">// 0 で割るとエラーになるので、先に確認する</span></span></div><div class="ln" id="L313"><span class="no">313</span><span class="tx">                    <span class="k">if</span> (number == 0)</span></div><div class="ln" id="L314"><span class="no">314</span><span class="tx">                    {</span></div><div class="ln" id="L315"><span class="no">315</span><span class="tx">                        <span class="k">return</span> DivideByZeroMessage;</span></div><div class="ln" id="L316"><span class="no">316</span><span class="tx">                    }</span></div><div class="ln" id="L317"><span class="no">317</span><span class="tx">                    total = total / number;</span></div><div class="ln" id="L318"><span class="no">318</span><span class="tx">                }</span></div><div class="ln" id="L319"><span class="no">319</span><span class="tx">            }</span></div><div class="ln" id="L320"><span class="no">320</span><span class="tx">            <span class="k">catch</span> (OverflowException)</span></div><div class="ln" id="L321"><span class="no">321</span><span class="tx">            {</span></div><div class="ln" id="L322"><span class="no">322</span><span class="tx">                <span class="cm">// decimal で扱える範囲（約29桁）を超えたとき</span></span></div><div class="ln" id="L323"><span class="no">323</span><span class="tx">                <span class="cm">// ※MaxDigits が 10 のままなら起きないが、MaxDigits を大きくしたときのための安全策</span></span></div><div class="ln" id="L324"><span class="no">324</span><span class="tx">                <span class="k">return</span> OverflowMessage;</span></div><div class="ln" id="L325"><span class="no">325</span><span class="tx">            }</span></div><div class="ln" id="L326"><span class="no">326</span><span class="tx"> </span></div><div class="ln" id="L327"><span class="no">327</span><span class="tx">            <span class="cm">// 整数部分が表示できる桁数（MaxDigits）を超えたら、桁あふれにする</span></span></div><div class="ln" id="L328"><span class="no">328</span><span class="tx">            <span class="cm">// 例：9999999999.6 は四捨五入すると 10000000000（11桁）になるので、丸めてから数える</span></span></div><div class="ln" id="L329"><span class="no">329</span><span class="tx">            <span class="k">decimal</span> rounded = Math.Round(total, MidpointRounding.AwayFromZero);</span></div><div class="ln" id="L330"><span class="no">330</span><span class="tx">            <span class="k">if</span> (CountIntegerDigits(rounded) &gt; MaxDigits)</span></div><div class="ln" id="L331"><span class="no">331</span><span class="tx">            {</span></div><div class="ln" id="L332"><span class="no">332</span><span class="tx">                <span class="k">return</span> OverflowMessage;</span></div><div class="ln" id="L333"><span class="no">333</span><span class="tx">            }</span></div><div class="ln" id="L334"><span class="no">334</span><span class="tx"> </span></div><div class="ln" id="L335"><span class="no">335</span><span class="tx">            <span class="k">return</span> <span class="s">&quot;&quot;</span>;</span></div><div class="ln" id="L336"><span class="no">336</span><span class="tx">        }</span></div><div class="ln" id="L337"><span class="no">337</span><span class="tx"> </span></div><div class="ln" id="L338"><span class="no">338</span><span class="tx">        <span class="cm">// =====================================================</span></span></div><div class="ln" id="L339"><span class="no">339</span><span class="tx">        <span class="cm">// 補助の処理</span></span></div><div class="ln" id="L340"><span class="no">340</span><span class="tx">        <span class="cm">// =====================================================</span></span></div><div class="ln" id="L341"><span class="no">341</span><span class="tx"> </span></div><div class="ln" id="L342"><span class="no">342</span><span class="tx">        <span class="cm">// 画面の表示を更新する</span></span></div><div class="ln" id="L343"><span class="no">343</span><span class="tx">        <span class="cm">// 上の段：確定した式　／　下の段：今入力している数</span></span></div><div class="ln" id="L344"><span class="no">344</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> ShowDisplay()</span></div><div class="ln" id="L345"><span class="no">345</span><span class="tx">        {</span></div><div class="ln" id="L346"><span class="no">346</span><span class="tx">            <span class="cm">// ----- 上の段：確定した式 -----</span></span></div><div class="ln" id="L347"><span class="no">347</span><span class="tx">            <span class="k">string</span> shown = expression;</span></div><div class="ln" id="L348"><span class="no">348</span><span class="tx">            <span class="k">if</span> (shown.Length &gt; MaxExpressionLength)</span></div><div class="ln" id="L349"><span class="no">349</span><span class="tx">            {</span></div><div class="ln" id="L350"><span class="no">350</span><span class="tx">                <span class="cm">// 長すぎるときは後ろの部分だけ残し、先頭に「…」を付ける</span></span></div><div class="ln" id="L351"><span class="no">351</span><span class="tx">                <span class="cm">// Substring(開始位置) は「開始位置から最後まで」</span></span></div><div class="ln" id="L352"><span class="no">352</span><span class="tx">                shown = <span class="s">&quot;…&quot;</span> + shown.Substring(shown.Length - (MaxExpressionLength - 1));</span></div><div class="ln" id="L353"><span class="no">353</span><span class="tx">            }</span></div><div class="ln" id="L354"><span class="no">354</span><span class="tx">            <span class="k">this</span>.expressionLabel.Text = shown;</span></div><div class="ln" id="L355"><span class="no">355</span><span class="tx"> </span></div><div class="ln" id="L356"><span class="no">356</span><span class="tx">            <span class="cm">// ----- 下の段：今入力している数 -----</span></span></div><div class="ln" id="L357"><span class="no">357</span><span class="tx">            <span class="k">if</span> (currentInput != <span class="s">&quot;&quot;</span>)</span></div><div class="ln" id="L358"><span class="no">358</span><span class="tx">            {</span></div><div class="ln" id="L359"><span class="no">359</span><span class="tx">                <span class="k">this</span>.window.Text = currentInput;</span></div><div class="ln" id="L360"><span class="no">360</span><span class="tx">            }</span></div><div class="ln" id="L361"><span class="no">361</span><span class="tx">            <span class="k">else</span> <span class="k">if</span> (operation != <span class="s">&quot;&quot;</span>)</span></div><div class="ln" id="L362"><span class="no">362</span><span class="tx">            {</span></div><div class="ln" id="L363"><span class="no">363</span><span class="tx">                <span class="cm">// 演算子の直後（&quot;2+6+&quot; など）は、ここまでの計算結果（小計）を表示</span></span></div><div class="ln" id="L364"><span class="no">364</span><span class="tx">                <span class="k">this</span>.window.Text = FormatNumber(total);</span></div><div class="ln" id="L365"><span class="no">365</span><span class="tx">            }</span></div><div class="ln" id="L366"><span class="no">366</span><span class="tx">            <span class="k">else</span></span></div><div class="ln" id="L367"><span class="no">367</span><span class="tx">            {</span></div><div class="ln" id="L368"><span class="no">368</span><span class="tx">                <span class="k">this</span>.window.Text = <span class="s">&quot;0&quot;</span>;</span></div><div class="ln" id="L369"><span class="no">369</span><span class="tx">            }</span></div><div class="ln" id="L370"><span class="no">370</span><span class="tx">        }</span></div><div class="ln" id="L371"><span class="no">371</span><span class="tx"> </span></div><div class="ln" id="L372"><span class="no">372</span><span class="tx">        <span class="cm">// 覚えている値をすべて最初の状態に戻す</span></span></div><div class="ln" id="L373"><span class="no">373</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> ResetAll()</span></div><div class="ln" id="L374"><span class="no">374</span><span class="tx">        {</span></div><div class="ln" id="L375"><span class="no">375</span><span class="tx">            total = 0;</span></div><div class="ln" id="L376"><span class="no">376</span><span class="tx">            operation = <span class="s">&quot;&quot;</span>;</span></div><div class="ln" id="L377"><span class="no">377</span><span class="tx">            expression = <span class="s">&quot;&quot;</span>;</span></div><div class="ln" id="L378"><span class="no">378</span><span class="tx">            currentInput = <span class="s">&quot;&quot;</span>;</span></div><div class="ln" id="L379"><span class="no">379</span><span class="tx">            justCalculated = <span class="k">false</span>;</span></div><div class="ln" id="L380"><span class="no">380</span><span class="tx">        }</span></div><div class="ln" id="L381"><span class="no">381</span><span class="tx"> </span></div><div class="ln" id="L382"><span class="no">382</span><span class="tx">        <span class="cm">// エラーのときの処理（★桁あふれ対策で変更）</span></span></div><div class="ln" id="L383"><span class="no">383</span><span class="tx">        <span class="cm">// 0 で割ったとき・桁あふれのとき、どちらもここでリセットしてメッセージを出す</span></span></div><div class="ln" id="L384"><span class="no">384</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> ShowError(<span class="k">string</span> message)</span></div><div class="ln" id="L385"><span class="no">385</span><span class="tx">        {</span></div><div class="ln" id="L386"><span class="no">386</span><span class="tx">            ResetAll();</span></div><div class="ln" id="L387"><span class="no">387</span><span class="tx">            <span class="k">this</span>.expressionLabel.Text = <span class="s">&quot;&quot;</span>;   <span class="cm">// 上の段を消す</span></span></div><div class="ln" id="L388"><span class="no">388</span><span class="tx">            <span class="k">this</span>.window.Text = message;</span></div><div class="ln" id="L389"><span class="no">389</span><span class="tx">        }</span></div><div class="ln" id="L390"><span class="no">390</span><span class="tx"> </span></div><div class="ln" id="L391"><span class="no">391</span><span class="tx">        <span class="cm">// 計算結果を表示用の文字列にする（★桁あふれ対策で変更）</span></span></div><div class="ln" id="L392"><span class="no">392</span><span class="tx">        <span class="cm">// 全体が MaxDigits 桁に収まるように、小数部分を四捨五入する</span></span></div><div class="ln" id="L393"><span class="no">393</span><span class="tx">        <span class="cm">// 例（MaxDigits = 10）：1÷3 → 0.333333333、12345.678912345 → 12345.67891</span></span></div><div class="ln" id="L394"><span class="no">394</span><span class="tx">        <span class="k">private</span> <span class="k">string</span> FormatNumber(<span class="k">decimal</span> value)</span></div><div class="ln" id="L395"><span class="no">395</span><span class="tx">        {</span></div><div class="ln" id="L396"><span class="no">396</span><span class="tx">            <span class="cm">// 小数部分に使える桁数 = 全体の桁数 - 整数部分の桁数</span></span></div><div class="ln" id="L397"><span class="no">397</span><span class="tx">            <span class="k">int</span> decimalPlaces = MaxDigits - CountIntegerDigits(value);</span></div><div class="ln" id="L398"><span class="no">398</span><span class="tx">            <span class="k">if</span> (decimalPlaces &lt; 0)</span></div><div class="ln" id="L399"><span class="no">399</span><span class="tx">            {</span></div><div class="ln" id="L400"><span class="no">400</span><span class="tx">                decimalPlaces = 0;</span></div><div class="ln" id="L401"><span class="no">401</span><span class="tx">            }</span></div><div class="ln" id="L402"><span class="no">402</span><span class="tx"> </span></div><div class="ln" id="L403"><span class="no">403</span><span class="tx">            <span class="cm">// MidpointRounding.AwayFromZero で「四捨五入」になる</span></span></div><div class="ln" id="L404"><span class="no">404</span><span class="tx">            <span class="cm">// （何も指定しないと「銀行型丸め」という別のルールになり、2.5 → 2 になってしまう）</span></span></div><div class="ln" id="L405"><span class="no">405</span><span class="tx">            <span class="k">decimal</span> rounded = Math.Round(value, decimalPlaces, MidpointRounding.AwayFromZero);</span></div><div class="ln" id="L406"><span class="no">406</span><span class="tx"> </span></div><div class="ln" id="L407"><span class="no">407</span><span class="tx">            <span class="cm">// &quot;0.####...&quot; の形にすると、&quot;5.0&quot; → &quot;5&quot;、&quot;1.50&quot; → &quot;1.5&quot; のように余分な 0 を消せる</span></span></div><div class="ln" id="L408"><span class="no">408</span><span class="tx">            <span class="k">return</span> rounded.ToString(<span class="s">&quot;0.############################&quot;</span>);</span></div><div class="ln" id="L409"><span class="no">409</span><span class="tx">        }</span></div><div class="ln" id="L410"><span class="no">410</span><span class="tx"> </span></div><div class="ln" id="L411"><span class="no">411</span><span class="tx">        <span class="cm">// 文字列の中の数字（0〜9）の数を数える（★桁あふれ対策で追加）</span></span></div><div class="ln" id="L412"><span class="no">412</span><span class="tx">        <span class="cm">// &quot;-&quot; や &quot;.&quot; は数えない（例：&quot;-12.5&quot; → 3）</span></span></div><div class="ln" id="L413"><span class="no">413</span><span class="tx">        <span class="k">private</span> <span class="k">int</span> CountDigits(<span class="k">string</span> text)</span></div><div class="ln" id="L414"><span class="no">414</span><span class="tx">        {</span></div><div class="ln" id="L415"><span class="no">415</span><span class="tx">            <span class="k">int</span> count = 0;</span></div><div class="ln" id="L416"><span class="no">416</span><span class="tx">            <span class="k">foreach</span> (<span class="k">char</span> c <span class="k">in</span> text)</span></div><div class="ln" id="L417"><span class="no">417</span><span class="tx">            {</span></div><div class="ln" id="L418"><span class="no">418</span><span class="tx">                <span class="k">if</span> (<span class="k">char</span>.IsDigit(c))</span></div><div class="ln" id="L419"><span class="no">419</span><span class="tx">                {</span></div><div class="ln" id="L420"><span class="no">420</span><span class="tx">                    count = count + 1;</span></div><div class="ln" id="L421"><span class="no">421</span><span class="tx">                }</span></div><div class="ln" id="L422"><span class="no">422</span><span class="tx">            }</span></div><div class="ln" id="L423"><span class="no">423</span><span class="tx">            <span class="k">return</span> count;</span></div><div class="ln" id="L424"><span class="no">424</span><span class="tx">        }</span></div><div class="ln" id="L425"><span class="no">425</span><span class="tx"> </span></div><div class="ln" id="L426"><span class="no">426</span><span class="tx">        <span class="cm">// 整数部分の桁数を数える（★桁あふれ対策で追加）</span></span></div><div class="ln" id="L427"><span class="no">427</span><span class="tx">        <span class="cm">// 例：123.45 → 3、-9876 → 4、0.5 → 1</span></span></div><div class="ln" id="L428"><span class="no">428</span><span class="tx">        <span class="k">private</span> <span class="k">int</span> CountIntegerDigits(<span class="k">decimal</span> value)</span></div><div class="ln" id="L429"><span class="no">429</span><span class="tx">        {</span></div><div class="ln" id="L430"><span class="no">430</span><span class="tx">            <span class="cm">// Math.Abs でマイナスを外し、Math.Truncate で小数部分を切り捨てる</span></span></div><div class="ln" id="L431"><span class="no">431</span><span class="tx">            <span class="k">decimal</span> integerPart = Math.Truncate(Math.Abs(value));</span></div><div class="ln" id="L432"><span class="no">432</span><span class="tx">            <span class="k">return</span> integerPart.ToString(<span class="s">&quot;0&quot;</span>).Length;</span></div><div class="ln" id="L433"><span class="no">433</span><span class="tx">        }</span></div><div class="ln" id="L434"><span class="no">434</span><span class="tx"> </span></div><div class="ln" id="L435"><span class="no">435</span><span class="tx"> </span></div><div class="ln" id="L436"><span class="no">436</span><span class="tx"> </span></div><div class="ln" id="L437"><span class="no">437</span><span class="tx">        <span class="cm">// 文字が変わったときの処理を書く場所</span></span></div><div class="ln" id="L438"><span class="no">438</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> window_TextChanged(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L439"><span class="no">439</span><span class="tx">        {</span></div><div class="ln" id="L440"><span class="no">440</span><span class="tx">            <span class="cm">//ここに書く</span></span></div><div class="ln" id="L441"><span class="no">441</span><span class="tx">        }</span></div><div class="ln" id="L442"><span class="no">442</span><span class="tx"> </span></div><div class="ln" id="L443"><span class="no">443</span><span class="tx">        <span class="cm">// =====================================================</span></span></div><div class="ln" id="L444"><span class="no">444</span><span class="tx">        <span class="cm">// ［CA］すべてクリア（★新しく追加）</span></span></div><div class="ln" id="L445"><span class="no">445</span><span class="tx">        <span class="cm">// 小計（total）も式も全部消して、電卓を最初の状態に戻す</span></span></div><div class="ln" id="L446"><span class="no">446</span><span class="tx">        <span class="cm">// =====================================================</span></span></div><div class="ln" id="L447"><span class="no">447</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> clearall_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L448"><span class="no">448</span><span class="tx">        {</span></div><div class="ln" id="L449"><span class="no">449</span><span class="tx">            ResetAll();</span></div><div class="ln" id="L450"><span class="no">450</span><span class="tx">            ShowDisplay(); <span class="cm">// 何もない状態なので &quot;0&quot; が表示される</span></span></div><div class="ln" id="L451"><span class="no">451</span><span class="tx">        }</span></div><div class="ln" id="L452"><span class="no">452</span><span class="tx"> </span></div><div class="ln" id="L453"><span class="no">453</span><span class="tx">        <span class="cm">// =====================================================</span></span></div><div class="ln" id="L454"><span class="no">454</span><span class="tx">        <span class="cm">// ［C］1文字消す（★新しく追加）</span></span></div><div class="ln" id="L455"><span class="no">455</span><span class="tx">        <span class="cm">// 入力途中の数（currentInput）の最後の1文字を消す</span></span></div><div class="ln" id="L456"><span class="no">456</span><span class="tx">        <span class="cm">// ※演算子は消さない</span></span></div><div class="ln" id="L457"><span class="no">457</span><span class="tx">        <span class="cm">//   演算子を押した時点で、その前の数はもう total に計算済みなので、</span></span></div><div class="ln" id="L458"><span class="no">458</span><span class="tx">        <span class="cm">//   演算子を消すには「計算を元に戻す」処理が必要になり複雑になるため</span></span></div><div class="ln" id="L459"><span class="no">459</span><span class="tx">        <span class="cm">// =====================================================</span></span></div><div class="ln" id="L460"><span class="no">460</span><span class="tx">        <span class="k">private</span> <span class="k">void</span> clear_Click(<span class="k">object</span> sender, EventArgs e)</span></div><div class="ln" id="L461"><span class="no">461</span><span class="tx">        {</span></div><div class="ln" id="L462"><span class="no">462</span><span class="tx">            <span class="cm">// 入力途中の数があるときだけ、最後の1文字を消す</span></span></div><div class="ln" id="L463"><span class="no">463</span><span class="tx">            <span class="cm">// （&quot;3+&quot; のように演算子の直後で、入力中の数がないときは何もしない）</span></span></div><div class="ln" id="L464"><span class="no">464</span><span class="tx">            <span class="k">if</span> (currentInput != <span class="s">&quot;&quot;</span>)</span></div><div class="ln" id="L465"><span class="no">465</span><span class="tx">            {</span></div><div class="ln" id="L466"><span class="no">466</span><span class="tx">                <span class="cm">// Substring(0, 長さ - 1) は「最後の1文字を除いた部分」</span></span></div><div class="ln" id="L467"><span class="no">467</span><span class="tx">                currentInput = currentInput.Substring(0, currentInput.Length - 1);</span></div><div class="ln" id="L468"><span class="no">468</span><span class="tx">            }</span></div><div class="ln" id="L469"><span class="no">469</span><span class="tx"> </span></div><div class="ln" id="L470"><span class="no">470</span><span class="tx">            <span class="cm">// 答えが出ている状態で押したときは、答えを「入力途中の数」として扱う</span></span></div><div class="ln" id="L471"><span class="no">471</span><span class="tx">            <span class="cm">// → 続けて数字を押すと、新しい計算ではなく、その続きを入力できる</span></span></div><div class="ln" id="L472"><span class="no">472</span><span class="tx">            justCalculated = <span class="k">false</span>;</span></div><div class="ln" id="L473"><span class="no">473</span><span class="tx"> </span></div><div class="ln" id="L474"><span class="no">474</span><span class="tx">            <span class="cm">// 画面を更新する</span></span></div><div class="ln" id="L475"><span class="no">475</span><span class="tx">            <span class="cm">// （エラーが出ているときも、ここで &quot;0&quot; の表示に戻る）</span></span></div><div class="ln" id="L476"><span class="no">476</span><span class="tx">            ShowDisplay();</span></div><div class="ln" id="L477"><span class="no">477</span><span class="tx">        }</span></div><div class="ln" id="L478"><span class="no">478</span><span class="tx">    }</span></div><div class="ln" id="L479"><span class="no">479</span><span class="tx">}</span></div></div>
+  <p class="legend"><i></i>直前に押したボタンで通った行</p>
+</section>
+
+<!-- ===================== 6 ===================== -->
+<section class="sec" id="s6">
+  <h2><span class="no">6</span>入力例を1ステップずつ追う</h2>
+  <p>ボタンを押すたびに、5つの値と画面がどう変わるかを表にしました。<span style="background:var(--hl);padding:0 4px;font-weight:700">黄色</span>のマスが、そのボタンで変わった値です。文字列は <code>"…"</code> で囲んでいます。各表の「シミュレーターで見る」を押すと、上の電卓で同じ入力を再生できます。</p>
+  <div id="scenarios"></div>
+</section>
+
+<!-- ===================== 7 ===================== -->
+<section class="sec" id="s7">
+  <h2><span class="no">7</span>メソッドごとの解説</h2>
+  <p>行番号を押すと、シミュレーターの下のソースコードに移動します。</p>
+
+  <h3>入力を受け取るメソッド</h3>
+  <div class="mgrid">
+    <div class="mcard">
+      <h4>AppendDigit(string digit)</h4>
+      <div class="role">数字を1つ、今の数の右につなげる（数字ボタン共通）</div>
+      <ol>
+        <li>答えが出ている状態（<span class="v justCalculated">justCalculated</span> が true）なら、<code>ResetAll</code> で新しい計算を始める <a class="lref" data-l="112">L112</a></li>
+        <li><span class="v currentInput">currentInput</span> が <code>"0"</code> なら <code>""</code> に、<code>"-0"</code> なら <code>"-"</code> にしておく（<code>"05"</code> を防ぐ） <a class="lref" data-l="118">L118</a></li>
+        <li>もう8桁あれば、何もせずに <code>return</code> <a class="lref" data-l="128">L128</a></li>
+        <li>数字を文字列としてつなげる（<code>"1" + "2"</code> → <code>"12"</code>） <a class="lref" data-l="134">L134</a></li>
+        <li><code>ShowDisplay</code> で画面を更新 <a class="lref" data-l="135">L135</a></li>
+      </ol>
+    </div>
+    <div class="mcard">
+      <h4>dot_Click</h4>
+      <div class="role">小数点を付ける</div>
+      <ol>
+        <li>答えが出ている状態なら、新しい計算を始める <a class="lref" data-l="144">L144</a></li>
+        <li>もう <code>"."</code> があれば何もしない（<code>"1.2.3"</code> を防ぐ） <a class="lref" data-l="150">L150</a></li>
+        <li>まだ数字がなければ先に <code>"0"</code> を補う（<code>""</code>→<code>"0."</code>、<code>"-"</code>→<code>"-0."</code>） <a class="lref" data-l="156">L156</a></li>
+        <li><code>"."</code> をつなげて、画面を更新 <a class="lref" data-l="161">L161</a></li>
+      </ol>
+    </div>
+    <div class="mcard">
+      <h4>clear_Click（［C］）</h4>
+      <div class="role">入力途中の数の、最後の1文字を消す</div>
+      <ol>
+        <li><span class="v currentInput">currentInput</span> が空でなければ、最後の1文字を消す <a class="lref" data-l="464">L464</a></li>
+        <li><span class="v justCalculated">justCalculated</span> を false にする。答えの後に押した場合、答えを「入力途中の数」として扱い、続きを入力できるようになる <a class="lref" data-l="472">L472</a></li>
+        <li>画面を更新。エラー表示中に押すと、ここで <code>"0"</code> に戻る <a class="lref" data-l="476">L476</a></li>
+      </ol>
+      <p class="muted" style="font-size:.86rem;margin:8px 0 0">演算子は消しません。演算子を押した時点で、その前の数はもう <span class="v total">total</span> に計算済みなので、演算子を消すには「計算を元に戻す」処理が必要になり、複雑になるためです。</p>
+    </div>
+    <div class="mcard">
+      <h4>clearall_Click（［CA］）</h4>
+      <div class="role">すべてを最初の状態に戻す</div>
+      <ol>
+        <li><code>ResetAll</code> で5つの値をすべて初期値に戻す <a class="lref" data-l="449">L449</a></li>
+        <li>画面を更新。何もない状態なので下の段は <code>"0"</code> <a class="lref" data-l="450">L450</a></li>
+      </ol>
+    </div>
+  </div>
+
+  <h3>計算するメソッド</h3>
+  <div class="mgrid">
+    <div class="mcard">
+      <h4>OperatorPressed(string newOperation)</h4>
+      <div class="role">演算子ボタン（＋ − × ÷）共通の処理</div>
+      <ol>
+        <li><b>まだ数を入力していないとき</b> <a class="lref" data-l="196">L196</a>
+          <ul>
+            <li>押したのが「-」なら、マイナスの数の入力開始（<span class="v currentInput">currentInput</span> = <code>"-"</code>） <a class="lref" data-l="201">L201</a></li>
+            <li>それ以外で、もう演算子があるなら、最後の演算子を入れ替える（<code>"3+"</code>→<code>"3×"</code>） <a class="lref" data-l="208">L208</a></li>
+            <li>どちらでもなければ何もしない</li>
+          </ul>
+        </li>
+        <li><span class="v currentInput">currentInput</span> を数に変換。<code>"-"</code> だけのように変換できなければ何もしない <a class="lref" data-l="217">L217</a></li>
+        <li><code>Calculate</code> で、<b>覚えていた演算子</b>を使って計算。エラーなら <code>ShowError</code> <a class="lref" data-l="225">L225</a></li>
+        <li><code>"5."</code> のように点で終わっていたら、点を消す（式が <code>"5.+"</code> にならないように） <a class="lref" data-l="234">L234</a></li>
+        <li><span class="v expression">expression</span> に「今の数＋新しい演算子」を付け足し、<span class="v operation">operation</span> を新しい演算子に、<span class="v currentInput">currentInput</span> を空にする <a class="lref" data-l="240">L240</a>〜<a class="lref" data-l="243">L243</a></li>
+        <li>画面を更新。下の段には小計が出る <a class="lref" data-l="244">L244</a></li>
+      </ol>
+    </div>
+    <div class="mcard">
+      <h4>Enter_Click（［＝］）</h4>
+      <div class="role">最後の計算をして、答えを出す</div>
+      <ol>
+        <li>演算子がまだ押されていなければ、何もしない <a class="lref" data-l="251">L251</a></li>
+        <li><code>"3+"</code> の直後のように最後の数がなければ、何もしない <a class="lref" data-l="258">L258</a></li>
+        <li><code>Calculate</code> で計算。エラーなら <code>ShowError</code> <a class="lref" data-l="264">L264</a></li>
+        <li><code>FormatNumber</code> で答えを8桁に丸めた文字列にし、変数 <code>answer</code> に取っておく <a class="lref" data-l="274">L274</a></li>
+        <li><code>ResetAll</code> で全部リセットしてから、<span class="v currentInput">currentInput</span> に答えを入れ、<span class="v justCalculated">justCalculated</span> を true にする <a class="lref" data-l="275">L275</a>〜<a class="lref" data-l="277">L277</a></li>
+      </ol>
+      <p class="muted" style="font-size:.86rem;margin:8px 0 0">答えが <span class="v currentInput">currentInput</span> に入っているので、続けて演算子を押すと、答えを最初の数として計算を続けられます。</p>
+    </div>
+    <div class="mcard">
+      <h4>Calculate(decimal number)</h4>
+      <div class="role"><span class="v total">total</span> と number を、覚えていた演算子で計算して total に入れる</div>
+      <ol>
+        <li><span class="v operation">operation</span> の中身で分かれる。<code>""</code>（最初の数）なら total = number、<code>"+"</code> なら total + number … <a class="lref" data-l="293">L293</a></li>
+        <li>割り算のときは、割る前に number が 0 かを確認。0 なら <code>DivideByZeroMessage</code> を返す <a class="lref" data-l="313">L313</a></li>
+        <li>計算全体を <code>try</code> で囲み、decimal の範囲を超えた（<code>OverflowException</code>）ときも落ちないようにしている <a class="lref" data-l="320">L320</a></li>
+        <li>total を整数に四捨五入して、8桁を超えたら <code>OverflowMessage</code> を返す <a class="lref" data-l="329">L329</a></li>
+        <li>うまくいけば <code>""</code>（空文字）を返す <a class="lref" data-l="335">L335</a></li>
+      </ol>
+      <p class="muted" style="font-size:.86rem;margin:8px 0 0">戻り値は「エラーメッセージ、または空文字」です。呼ぶ側は <code>error != ""</code> でエラーかどうかを判断し、メッセージをそのまま <code>ShowError</code> に渡します。</p>
+    </div>
+  </div>
+
+  <h3>表示・補助のメソッド</h3>
+  <div class="mgrid">
+    <div class="mcard">
+      <h4>ShowDisplay()</h4>
+      <div class="role">今の値から、画面の上下の段を作り直す</div>
+      <ul>
+        <li><b>上の段</b>：<span class="v expression">expression</span> をそのまま表示。20文字を超えたら、後ろの19文字だけ残して先頭に「…」を付ける <a class="lref" data-l="348">L348</a><br><span class="muted">例：<code>12345678+12345678+12345678+</code>（27文字）→ <code>…+12345678+12345678+</code></span></li>
+        <li><b>下の段</b>（上から順に調べる） <a class="lref" data-l="357">L357</a>
+          <ol>
+            <li><span class="v currentInput">currentInput</span> が空でない → それを表示</li>
+            <li>空で、<span class="v operation">operation</span> がある（演算子の直後）→ 小計 <span class="v total">total</span> を <code>FormatNumber</code> して表示</li>
+            <li>どちらでもない → <code>"0"</code></li>
+          </ol>
+        </li>
+      </ul>
+    </div>
+    <div class="mcard">
+      <h4>FormatNumber(decimal value)</h4>
+      <div class="role">数を、全体で8桁に収まる表示用の文字列にする</div>
+      <ol>
+        <li>小数に使える桁数 ＝ 8 − 整数部分の桁数（マイナスなら 0） <a class="lref" data-l="397">L397</a></li>
+        <li>その桁数で四捨五入（<code>MidpointRounding.AwayFromZero</code>） <a class="lref" data-l="405">L405</a></li>
+        <li><code>"0.####…"</code> の形で文字列にする。<code>#</code> は「数字があれば表示、なければ表示しない」なので、末尾の余分な 0 が消える（<code>5.0</code>→<code>"5"</code>、<code>1.50</code>→<code>"1.5"</code>） <a class="lref" data-l="408">L408</a></li>
+      </ol>
+      <table class="tbl" style="margin-top:10px;font-size:.84rem">
+        <tr><th>value</th><th>整数</th><th>小数</th><th>結果</th></tr>
+        <tr><td class="mono">0.3333…(28桁)</td><td>1桁</td><td>7桁</td><td class="mono">"0.3333333"</td></tr>
+        <tr><td class="mono">12345.6789</td><td>5桁</td><td>3桁</td><td class="mono">"12345.679"</td></tr>
+        <tr><td class="mono">-1234.56789</td><td>4桁</td><td>4桁</td><td class="mono">"-1234.5679"</td></tr>
+        <tr><td class="mono">99999999.4</td><td>8桁</td><td>0桁</td><td class="mono">"99999999"</td></tr>
+        <tr><td class="mono">14</td><td>2桁</td><td>6桁</td><td class="mono">"14"</td></tr>
+      </table>
+    </div>
+    <div class="mcard">
+      <h4>CountDigits / CountIntegerDigits</h4>
+      <div class="role">桁数を数える</div>
+      <ul>
+        <li><code>CountDigits(string)</code>：文字列の中の数字（0〜9）を数える。<code>"-"</code> と <code>"."</code> は数えない。<code>"-12.5"</code> → 3 <a class="lref" data-l="413">L413</a><br><span class="muted">先頭の 0 も数えるので、<code>"0."</code> の後ろには7桁まで（<code>"0.1234567"</code> で8桁）。</span></li>
+        <li><code>CountIntegerDigits(decimal)</code>：整数部分の桁数。<code>Math.Abs</code> でマイナスを外し、<code>Math.Truncate</code> で小数を切り捨て、文字列にして長さを数える。<code>123.45</code> → 3、<code>0.5</code> → 1 <a class="lref" data-l="428">L428</a></li>
+      </ul>
+    </div>
+    <div class="mcard">
+      <h4>ResetAll / ShowError</h4>
+      <div class="role">リセットとエラー表示</div>
+      <ul>
+        <li><code>ResetAll</code>：5つの値をすべて最初の値に戻す。画面は変えない <a class="lref" data-l="373">L373</a></li>
+        <li><code>ShowError</code>：<code>ResetAll</code> してから、上の段を空にし、下の段にメッセージを直接書く <a class="lref" data-l="384">L384</a></li>
+      </ul>
+      <p class="muted" style="font-size:.86rem;margin:8px 0 0">エラーの後は、画面にはメッセージが出ていますが、中身はもう初期状態です。そのため、次に数字を押せばそのまま新しい計算が始まります。</p>
+    </div>
+  </div>
+  <p class="muted" style="margin-top:14px"><code>window_TextChanged</code> <a class="lref" data-l="438">L438</a> は、下の段の文字が変わったときに呼ばれるイベント用のメソッドですが、中身は空で、今は何もしていません。</p>
+</section>
+
+<!-- ===================== 8 ===================== -->
+<section class="sec" id="s8">
+  <h2><span class="no">8</span>コードに出てくるC#の書き方</h2>
+  <div class="tblwrap"><table class="tbl">
+    <tr><th style="width:30%">書き方</th><th>意味（このコードでの使われ方）</th></tr>
+    <tr><td class="mono">private void b0_Click(object sender, EventArgs e)</td><td>ボタンが押されたときに呼ばれる<b>イベントハンドラ</b>。<code>sender</code> は押されたボタン、<code>e</code> はイベントの情報。このコードではどちらも使っていない。</td></tr>
+    <tr><td class="mono">this.b0.Text</td><td>ボタン b0 に書かれている文字（<code>"0"</code>）。それを <code>AppendDigit</code> に渡している。</td></tr>
+    <tr><td class="mono">private const int MaxDigits = 8;</td><td><code>const</code> は書き換えられない値（定数）。</td></tr>
+    <tr><td class="mono">currentInput + digit</td><td>文字列どうしの <code>+</code> は「つなげる」。<code>"1" + "2"</code> は <code>"12"</code>（足し算の 3 ではない）。</td></tr>
+    <tr><td class="mono">s.Substring(0, s.Length - 1)</td><td>先頭から「長さ−1」文字を取り出す ＝ 最後の1文字を除いた部分。<code>Substring(開始位置)</code> だけなら、そこから最後まで。</td></tr>
+    <tr><td class="mono">s.Contains(".") / s.EndsWith(".")</td><td>「. を含むか」「. で終わるか」を true / false で返す。</td></tr>
+    <tr><td class="mono">decimal.TryParse(currentInput, out number)</td><td>文字列を decimal に変換してみる。できたら true を返し、結果を <code>number</code> に入れる。できなければ false。<code>out</code> は「メソッドに結果を書き込んでもらう引数」という意味。<code>"0."</code> や <code>"5."</code> は変換でき、<code>"-"</code> だけは変換できない。</td></tr>
+    <tr><td class="mono">try { … } catch (OverflowException) { … }</td><td><code>try</code> の中でエラー（例外）が起きたら、アプリが落ちる代わりに <code>catch</code> の中に飛ぶ。</td></tr>
+    <tr><td class="mono">Math.Round(x, 桁, MidpointRounding.AwayFromZero)</td><td>四捨五入。何も指定しないと「銀行型丸め」（ちょうど半分のとき偶数に寄せる。2.5→2、3.5→4）になるため、わざわざ指定している。</td></tr>
+    <tr><td class="mono">Math.Abs(x) / Math.Truncate(x)</td><td>絶対値（マイナスを外す） / 小数部分を切り捨てる。</td></tr>
+    <tr><td class="mono">foreach (char c in text)</td><td>文字列を1文字ずつ取り出して繰り返す。<code>char.IsDigit(c)</code> は「数字か」を調べる。</td></tr>
+    <tr><td class="mono">return;</td><td>戻り値のないメソッドで、そこで処理を終える。「条件に合わなければ、ここで終わり」という書き方（早期リターン）がこのコードでは何度も出てくる。</td></tr>
+  </table></div>
+</section>
+
+<!-- ===================== 9 ===================== -->
+<section class="sec" id="s9">
+  <h2><span class="no">9</span>よくある疑問</h2>
+  <dl class="qa">
+    <dt>［＝］を続けて押すとどうなる？</dt>
+    <dd>2回目以降は何も起きません。1回目の［＝］の最後に <code>ResetAll</code> で <span class="v operation">operation</span> が <code>""</code> に戻っているので、<a class="lref" data-l="251">L251</a> で return します。前の計算を繰り返す機能はありません。</dd>
+
+    <dt>「5」だけ入力して［＝］を押すと？</dt>
+    <dd>何も起きません。演算子がまだないので、計算するものがありません（<a class="lref" data-l="251">L251</a>）。</dd>
+
+    <dt>「3+」の後に［×］を押すと？</dt>
+    <dd>演算子が入れ替わって、式は <code>"3×"</code> になります（<a class="lref" data-l="208">L208</a>）。</dd>
+
+    <dt>「3+」の後に［-］を押すと？</dt>
+    <dd>入れ替えではなく、マイナスの数の入力開始になります（<a class="lref" data-l="201">L201</a>）。続けて 2 を押せば「3+-2」です。そのため、「+」を「-」に入れ替えることはできません（「3+-2」と「3-2」は同じ答えなので、計算には困りません）。</dd>
+
+    <dt>「-」だけ入力した状態で［×］を押すと？</dt>
+    <dd>何も起きません。<code>"-"</code> は数に変換できないので、<a class="lref" data-l="217">L217</a> で return します。［C］で <code>"-"</code> を消せば、演算子の入れ替えができます。</dd>
+
+    <dt>答えが出た後に、数字・演算子・［C］を押すと？</dt>
+    <dd>数字なら新しい計算が始まります（<span class="v justCalculated">justCalculated</span> が true なので <code>ResetAll</code>）。演算子なら、答えを最初の数として計算を続けます。［C］なら答えの最後の1文字が消え、そのまま続きを入力できます。</dd>
+
+    <dt>1÷3＝ の答えに ×3＝ をすると、なぜ 1 にならない？</dt>
+    <dd>［＝］を押すと、答えは8桁に丸めた文字列 <code>"0.3333333"</code> として <span class="v currentInput">currentInput</span> に入ります。続きの計算はこの丸めた値で行うので、0.3333333×3 ＝ 0.9999999 になります。一方、［＝］を挟まずに「1÷3×3＝」と押すと、<span class="v total">total</span> には28桁の 0.3333…が残ったまま計算されるので、答えは 1 になります。</dd>
+
+    <dt>エラーが出た後はどうなっている？</dt>
+    <dd><code>ShowError</code> の中で <code>ResetAll</code> しているので、中身は起動直後と同じです。数字を押せば新しい計算が始まり、［C］や［CA］を押すと下の段が <code>"0"</code> に戻ります。</dd>
+
+    <dt>9桁目の数字を押すと？</dt>
+    <dd><code>AppendDigit</code> の <a class="lref" data-l="128">L128</a> で return するので、何も変わりません。<code>ShowDisplay</code> も呼ばれないので、画面もそのままです。</dd>
+  </dl>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    シミュレーターは Form1.cs の処理を JavaScript で再現したものです。decimal の計算（最大28桁）も再現していますが、ごく細かい丸め方が実物と異なる可能性があります。
+  </div>
+</footer>
+
+<script>
+// ===== Form1.cs の処理を JavaScript で再現したエンジン =====
+const MaxDigits = 8;
+const MaxExpressionLength = 20;
+const DivideByZeroMessage = "(^o^)0ﾜﾙﾅ";
+const OverflowMessage = "(^o^)ｹﾀｱﾌﾚ";
+
+// ---- C# の decimal（最大28桁の10進数）を BigInt で再現 ----
+const LIMIT = 1n << 96n;
+const p10 = n => 10n ** BigInt(n);
+const babs = x => (x < 0n ? -x : x);
+function divRound(m, d, mode) {
+  let q = m / d;
+  const r = m % d;
+  if (r === 0n) return q;
+  const t = babs(r) * 2n;
+  const away = mode === 'away' ? t >= d : (t > d || (t === d && babs(q) % 2n === 1n));
+  if (away) q += (m < 0n ? -1n : 1n);
+  return q;
+}
+const Dec = (m, s) => ({ m, s });
+function norm(a) { let m = a.m, s = a.s; while (s > 0 && m % 10n === 0n) { m /= 10n; s--; } return Dec(m, s); }
+function fit(m, s) {
+  while ((s > 28 || babs(m) >= LIMIT) && s > 0) { m = divRound(m, 10n, 'even'); s--; }
+  if (babs(m) >= LIMIT) throw new Error('overflow');
+  return Dec(m, s);
+}
+function align(a, b) { const s = Math.max(a.s, b.s); return [a.m * p10(s - a.s), b.m * p10(s - b.s), s]; }
+const dAdd = (a, b) => { const [x, y, s] = align(a, b); return fit(x + y, s); };
+const dSub = (a, b) => { const [x, y, s] = align(a, b); return fit(x - y, s); };
+const dMul = (a, b) => fit(a.m * b.m, a.s + b.s);
+function dDiv(a, b) {
+  for (let t = 28; t >= 0; t--) {
+    let n = a.m * p10(b.s + t), d = b.m * p10(a.s);
+    if (d < 0n) { n = -n; d = -d; }
+    const q = divRound(n, d, 'even');
+    if (babs(q) < LIMIT) return norm(Dec(q, t));
+  }
+  throw new Error('overflow');
+}
+// Math.Round(value, places, MidpointRounding.AwayFromZero)
+function dRound(a, places) { if (a.s <= places) return a; return Dec(divRound(a.m, p10(a.s - places), 'away'), places); }
+// CountIntegerDigits
+function intDigits(a) { return (babs(a.m) / p10(a.s)).toString().length; }
+// ToString("0.####...")
+function dStr(a) {
+  a = norm(a);
+  if (a.m === 0n) return "0";
+  const neg = a.m < 0n;
+  let ds = babs(a.m).toString();
+  if (a.s > 0) {
+    if (ds.length <= a.s) ds = '0'.repeat(a.s - ds.length + 1) + ds;
+    ds = ds.slice(0, ds.length - a.s) + '.' + ds.slice(ds.length - a.s);
+  }
+  return (neg ? '-' : '') + ds;
+}
+// decimal.TryParse（変換できなければ null）
+function tryParse(str) {
+  const mm = /^(-?)(\d*)(?:\.(\d*))?$/.exec(str);
+  if (!mm) return null;
+  const ip = mm[2], fp = mm[3] || '';
+  if (ip === '' && fp === '') return null;
+  return Dec(BigInt(mm[1] + (ip + fp)), fp.length);
+}
+const countDigits = s => (s.match(/[0-9]/g) || []).length;
+
+function escHtml(s) { return String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); }
+const R = (a, b) => { const r = []; for (let i = a; i <= b; i++) r.push(i); return r; };
+
+function createCalc() {
+  const S = { total: Dec(0n, 0), operation: "", expression: "", currentInput: "", justCalculated: false };
+  const scr = { upper: "", lower: "0" };
+  let trace = [], depth = 0;
+  const T = (line, html) => trace.push({ line, html, depth });
+  const c = s => `<code>${escHtml(s)}</code>`;
+  const qs = s => c(`"${s}"`);
+  const opnd = s => (s.startsWith('-') ? `(${s})` : s);
+
+  function snap() {
+    return { total: dStr(S.total), operation: S.operation, expression: S.expression, currentInput: S.currentInput, justCalculated: S.justCalculated };
+  }
+
+  function ResetAll(line) {
+    T(line, `${c('ResetAll()')}：覚えている値をすべて最初の状態に戻す`);
+    depth++;
+    S.total = Dec(0n, 0); S.operation = ""; S.expression = ""; S.currentInput = ""; S.justCalculated = false;
+    T(R(375, 379), `total = 0、operation = ""、expression = ""、currentInput = ""、justCalculated = false`);
+    depth--;
+  }
+
+  function FormatNumber(v, line) {
+    const k = intDigits(v);
+    let p = MaxDigits - k;
+    if (p < 0) p = 0;
+    const r = dStr(dRound(v, p));
+    T(line, `${c('FormatNumber(' + dStr(v) + ')')}：整数部分 ${k} 桁 → 小数は ${p} 桁まで → ${qs(r)}`);
+    return r;
+  }
+
+  function ShowDisplay(line) {
+    T(line, `${c('ShowDisplay()')}：今の値から画面を作り直す`);
+    depth++;
+    let shown = S.expression;
+    if (shown.length > MaxExpressionLength) {
+      shown = "…" + shown.substring(shown.length - (MaxExpressionLength - 1));
+      T([348, 352], `式が ${MaxExpressionLength} 文字を超えたので、後ろだけ残して先頭に「…」を付ける`);
+    }
+    scr.upper = shown;
+    T(354, `上の段（expressionLabel）← ${qs(shown)}`);
+    if (S.currentInput !== "") {
+      scr.lower = S.currentInput;
+      T([357, 359], `currentInput が空でない → 下の段（window）に ${qs(S.currentInput)}`);
+    } else if (S.operation !== "") {
+      T(361, `currentInput は空で、operation がある → 下の段に小計（total）を表示`);
+      depth++;
+      scr.lower = FormatNumber(S.total, 364);
+      depth--;
+    } else {
+      scr.lower = "0";
+      T(368, `currentInput も operation も空 → 下の段に ${qs("0")}`);
+    }
+    depth--;
+  }
+
+  function ShowError(msg, line) {
+    T(line, `${c('ShowError("' + msg + '")')}：エラーを表示する`);
+    depth++;
+    ResetAll(386);
+    scr.upper = "";
+    T(387, `上の段を空にする`);
+    scr.lower = msg;
+    T(388, `下の段に ${qs(msg)}（ShowDisplay は使わず、直接書き込む）`);
+    depth--;
+  }
+
+  function Calculate(number, line) {
+    const ns = dStr(number);
+    T(line, `${c('Calculate(' + ns + ')')} を呼ぶ`);
+    depth++;
+    const before = dStr(S.total);
+    try {
+      if (S.operation === "") {
+        S.total = number;
+        T([293, 296], `operation が "" → 最初の数なので、そのまま total = ${ns}`);
+      } else if (S.operation === "+") {
+        S.total = dAdd(S.total, number);
+        T([298, 300], `覚えていた演算子 ${qs('+')} で計算：total = ${opnd(before)} + ${opnd(ns)} → ${dStr(S.total)}`);
+      } else if (S.operation === "-") {
+        S.total = dSub(S.total, number);
+        T([302, 304], `覚えていた演算子 ${qs('-')} で計算：total = ${opnd(before)} - ${opnd(ns)} → ${dStr(S.total)}`);
+      } else if (S.operation === "×") {
+        S.total = dMul(S.total, number);
+        T([306, 308], `覚えていた演算子 ${qs('×')} で計算：total = ${opnd(before)} × ${opnd(ns)} → ${dStr(S.total)}`);
+      } else if (S.operation === "÷") {
+        if (number.m === 0n) {
+          T([310, 313, 315], `覚えていた演算子は ${qs('÷')}。number が 0 なので、割る前に DivideByZeroMessage を返す（total は変えない）`);
+          depth--;
+          return DivideByZeroMessage;
+        }
+        S.total = dDiv(S.total, number);
+        T([310, 313, 317], `覚えていた演算子 ${qs('÷')} で計算：total = ${opnd(before)} ÷ ${opnd(ns)} → ${dStr(S.total)}`);
+      }
+    } catch (e) {
+      T(R(320, 324), `decimal で扱える範囲を超えた → OverflowMessage を返す`);
+      depth--;
+      return OverflowMessage;
+    }
+    const rounded = dRound(S.total, 0);
+    const k = intDigits(rounded);
+    if (k > MaxDigits) {
+      T([329, 330, 332], `total を整数に四捨五入すると ${dStr(rounded)}（${k} 桁）。${MaxDigits} 桁を超えたので OverflowMessage を返す`);
+      depth--;
+      return OverflowMessage;
+    }
+    T([329, 330, 335], `total を整数に四捨五入すると ${k} 桁（${MaxDigits} 桁以内）→ "" を返す（成功）`);
+    depth--;
+    return "";
+  }
+
+  function AppendDigit(digit) {
+    T(109, `${c('AppendDigit("' + digit + '")')}`);
+    depth++;
+    if (S.justCalculated) {
+      T(112, `justCalculated が true（答えが出ている状態）→ 新しい計算を始める`);
+      ResetAll(114);
+    } else {
+      T(112, `justCalculated は false → リセットしない`);
+    }
+    if (S.currentInput === "0") {
+      S.currentInput = "";
+      T([118, 120], `currentInput が "0" → "05" にならないよう、先に "" にする`);
+    } else if (S.currentInput === "-0") {
+      S.currentInput = "-";
+      T([122, 124], `currentInput が "-0" → "-05" にならないよう、先に "-" にする`);
+    }
+    const cnt = countDigits(S.currentInput);
+    if (cnt >= MaxDigits) {
+      T([128, 130], `${c('CountDigits("' + S.currentInput + '")')} は ${cnt}。もう ${MaxDigits} 桁なので受け付けずに return（画面も変えない）`);
+      depth--;
+      return;
+    }
+    T(128, `${c('CountDigits("' + S.currentInput + '")')} は ${cnt}。${MaxDigits} 桁未満なので入力OK`);
+    const o = S.currentInput;
+    S.currentInput = o + digit;
+    T(134, `currentInput = ${qs(o)} + ${qs(digit)} → ${qs(S.currentInput)}`);
+    ShowDisplay(135);
+    depth--;
+  }
+
+  function dot() {
+    T(141, `${c('dot_Click')}（［.］ボタン）`);
+    depth++;
+    if (S.justCalculated) {
+      T(144, `justCalculated が true → 新しい計算を始める`);
+      ResetAll(146);
+    }
+    if (S.currentInput.includes(".")) {
+      T([150, 152], `currentInput ${qs(S.currentInput)} にはもう "." があるので return（何もしない）`);
+      return;
+    }
+    if (S.currentInput === "" || S.currentInput === "-") {
+      const o = S.currentInput;
+      S.currentInput = o + "0";
+      T([156, 158], `まだ数字がない → "0" を補う：${qs(o)} → ${qs(S.currentInput)}`);
+    }
+    const o2 = S.currentInput;
+    S.currentInput = o2 + ".";
+    T(161, `currentInput = ${qs(o2)} + "." → ${qs(S.currentInput)}`);
+    ShowDisplay(162);
+  }
+
+  function OperatorPressed(op) {
+    T(193, `${c('OperatorPressed("' + op + '")')}`);
+    depth++;
+    if (S.currentInput === "") {
+      if (op === "-") {
+        S.currentInput = "-";
+        T([196, 198, 201], `currentInput が空で、押したのは「-」→ マイナスの数の入力開始：currentInput = "-"`);
+        ShowDisplay(202);
+      } else if (S.operation !== "") {
+        const o = S.expression;
+        S.expression = o.substring(0, o.length - 1) + op;
+        S.operation = op;
+        T([196, 204, 208, 209], `currentInput が空で、operation がある → 演算子の入れ替え：expression ${qs(o)} → ${qs(S.expression)}、operation = ${qs(op)}`);
+        ShowDisplay(210);
+      } else {
+        T([196, 204], `currentInput も operation も空 → 何もしない`);
+      }
+      T(212, `return`);
+      depth--;
+      return;
+    }
+    const num = tryParse(S.currentInput);
+    if (!num) {
+      T([217, 219], `${qs(S.currentInput)} はまだ数に変換できない（TryParse が false）→ return`);
+      depth--;
+      return;
+    }
+    T(217, `TryParse で ${qs(S.currentInput)} を数 ${dStr(num)} に変換`);
+    const err = Calculate(num, 225);
+    if (err !== "") {
+      T(226, `エラーメッセージが返ってきた`);
+      ShowError(err, 228);
+      T(229, `return`);
+      depth--;
+      return;
+    }
+    if (S.currentInput.endsWith(".")) {
+      const o = S.currentInput;
+      S.currentInput = o.substring(0, o.length - 1);
+      T([234, 236], `${qs(o)} は "." で終わっている → 最後の "." を消して ${qs(S.currentInput)}`);
+    }
+    const oe = S.expression;
+    S.expression = oe + S.currentInput + op;
+    T(240, `expression = ${qs(oe)} + ${qs(S.currentInput)} + ${qs(op)} → ${qs(S.expression)}`);
+    S.operation = op;
+    T(241, `operation = ${qs(op)}（次に計算するときに使う）`);
+    S.currentInput = "";
+    T(242, `currentInput = ""`);
+    S.justCalculated = false;
+    T(243, `justCalculated = false`);
+    ShowDisplay(244);
+    depth--;
+  }
+
+  function Enter() {
+    T(248, `${c('Enter_Click')}（［=］ボタン）`);
+    depth++;
+    if (S.operation === "") {
+      T([251, 253], `operation が "" → 計算するものがないので return（何もしない）`);
+      return;
+    }
+    const num = tryParse(S.currentInput);
+    if (!num) {
+      T([258, 260], `currentInput ${qs(S.currentInput)} は数に変換できない（TryParse が false）→ return`);
+      return;
+    }
+    T(258, `TryParse で ${qs(S.currentInput)} を数 ${dStr(num)} に変換`);
+    const err = Calculate(num, 264);
+    if (err !== "") {
+      T(265, `エラーメッセージが返ってきた`);
+      ShowError(err, 267);
+      return;
+    }
+    const answer = FormatNumber(S.total, 274);
+    T(274, `ResetAll で total が 0 に戻る前に、答えを変数 answer に取っておく`);
+    ResetAll(275);
+    S.currentInput = answer;
+    T(276, `currentInput = answer → ${qs(answer)}`);
+    S.justCalculated = true;
+    T(277, `justCalculated = true（答えが出ている状態）`);
+    ShowDisplay(278);
+  }
+
+  function clear() {
+    T(460, `${c('clear_Click')}（［C］ボタン）`);
+    depth++;
+    if (S.currentInput !== "") {
+      const o = S.currentInput;
+      S.currentInput = o.substring(0, o.length - 1);
+      T([464, 467], `currentInput の最後の1文字を消す：${qs(o)} → ${qs(S.currentInput)}`);
+    } else {
+      T(464, `currentInput が空 → 何も消さない（演算子は消さない）`);
+    }
+    const was = S.justCalculated;
+    S.justCalculated = false;
+    T(472, was ? `justCalculated = false（答えを「入力途中の数」として扱う）` : `justCalculated = false`);
+    ShowDisplay(476);
+  }
+
+  function clearall() {
+    T(447, `${c('clearall_Click')}（［CA］ボタン）`);
+    depth++;
+    ResetAll(449);
+    ShowDisplay(450);
+  }
+
+  const OPS = { '+': ['add_Click', 169, 171], '-': ['minus_Click', 175, 177], '×': ['times_Click', 181, 183], '÷': ['divide_Click', 187, 189] };
+
+  function press(key) {
+    trace = []; depth = 0;
+    const before = snap();
+    if (/^[0-9]$/.test(key)) {
+      const n = +key;
+      T([58 + 5 * n, 60 + 5 * n], `${c('b' + n + '_Click')}（［${n}］ボタン）→ ボタンの文字 ${qs(key)} を AppendDigit に渡す`);
+      depth++;
+      AppendDigit(key);
+    } else if (key === '.') {
+      dot();
+    } else if (OPS[key]) {
+      const [name, a, b] = OPS[key];
+      T([a, b], `${c(name)}（［${key}］ボタン）→ OperatorPressed に ${qs(key)} を渡す`);
+      depth++;
+      OperatorPressed(key);
+    } else if (key === '=') {
+      Enter();
+    } else if (key === 'C') {
+      clear();
+    } else if (key === 'CA') {
+      clearall();
+    }
+    return { before, after: snap(), trace, screen: { upper: scr.upper, lower: scr.lower } };
+  }
+
+  function state() { return { before: null, after: snap(), trace: [], screen: { upper: scr.upper, lower: scr.lower } }; }
+
+  return { press, state };
+}
+
+// "9*8" は「9 を 8 回押す」
+function parseKey(k) {
+  const m = /^(.+)\*(\d+)$/.exec(k);
+  return m ? { key: m[1], times: +m[2] } : { key: k, times: 1 };
+}
+function keyLabel(k) {
+  const { key, times } = parseKey(k);
+  return times > 1 ? `${key} を${times}回` : key;
+}
+function pressKey(calc, k) {
+  const { key, times } = parseKey(k);
+  let first = null, r = null;
+  for (let i = 0; i < times; i++) { r = calc.press(key); if (!first) first = r.before; }
+  return { ...r, before: first };
+}
+
+const VARS = [
+  ['total', 'decimal'],
+  ['operation', 'string'],
+  ['expression', 'string'],
+  ['currentInput', 'string'],
+  ['justCalculated', 'bool'],
+];
+
+if (typeof module !== 'undefined') module.exports = { createCalc, pressKey, keyLabel, VARS };
+
+</script>
+<script>
+(function(){
+'use strict';
+
+const SCENARIOS = [
+  { id:'a', title:'3 + 4 × 2 =', group:'左から順に計算する',
+    intro:'演算子が「1つ遅れて」計算される様子を見ます。',
+    keys:['3','+','4','×','2','='],
+    notes:[
+      '数字はまず文字列として currentInput にためていく。',
+      '最初の数なので、total にそのまま 3 が入る（operation が "" のとき）。「+」は operation に覚えるだけで、まだ計算しない。',
+      '下の段は currentInput をそのまま表示する。',
+      'ここで計算されるのは、覚えていた「+」。3 + 4 = 7。新しく押した「×」は operation に覚えるだけ。下の段には小計 7 が出る。',
+      '上の段は "3+4×" のまま。',
+      '覚えていた「×」で 7 × 2 = 14。ResetAll したので total は 0、式も空。答え "14" は currentInput に文字列で入り、justCalculated が true になる。'
+    ],
+    take:'×を先に計算するルールはないので、答えは 11 ではなく 14。total は ResetAll で 0 に戻りますが、答えは currentInput に残っているので、続けて演算子を押せば答えから計算を続けられます。'
+  },
+  { id:'b1', title:'1 ÷ 3 = × 3 =', group:'1÷3= と小数点',
+    intro:'答えを8桁に丸める処理（FormatNumber）と、その答えを使って計算を続けたときの動きを見ます。',
+    keys:['1','÷','3','=','×','3','='],
+    notes:[
+      '',
+      'total = 1、operation = "÷"。',
+      '',
+      '1 ÷ 3 の total は 0.3333…（28桁）。FormatNumber で全体8桁（整数1桁＋小数7桁）に丸めた "0.3333333" が、答えとして currentInput に入る。',
+      '答えの続きで計算する。currentInput の "0.3333333" を数に変換して total に入れる。28桁の値はもう残っていない。',
+      'justCalculated は前のステップで false に戻っているので、新しい計算にはならない。',
+      '0.3333333 × 3 = 0.9999999。'
+    ],
+    take:'［＝］で出る答えは「表示用に丸めた文字列」です。それを使って計算を続けるので、1÷3×3 なのに 1 になりません。'
+  },
+  { id:'b2', title:'1 ÷ 3 × 3 =', group:'1÷3= と小数点',
+    intro:'比べるために、途中で［＝］を押さずに続けた場合です。',
+    keys:['1','÷','3','×','3','='],
+    notes:[
+      '', '', '',
+      '覚えていた「÷」で 1 ÷ 3。total には 28 桁の 0.3333… がそのまま入る。下の段の "0.3333333" は、表示のために丸めただけ。',
+      '',
+      'total は 0.9999…（28桁）。FormatNumber で小数7桁に四捨五入すると 1 になる。'
+    ],
+    take:'total は丸めずに28桁のまま持っているので、こちらは 1 になります。「画面に出ている値」と「total の中身」は違うことがある、という例です。'
+  },
+  { id:'c', title:'. 5 + 2 . . × 2 =', group:'1÷3= と小数点',
+    intro:'小数点の入力と、「2.」のように点で終わる数の扱いを見ます。',
+    keys:['.','5','+','2','.','.','×','2','='],
+    notes:[
+      'まだ数字がないので、先に "0" を補って "0." にする。',
+      '"0." の後ろに 5 をつなげる。',
+      'total = 0.5。',
+      '',
+      '小数点を付ける。下の段には "2." と出る。',
+      'currentInput にもう "." があるので何もしない（"2.." にならない）。',
+      '"2." は TryParse で 2 と読める。覚えていた「+」で 0.5 + 2 = 2.5。式に足す前に最後の "." を消すので、式は "0.5+2×"。',
+      '',
+      '2.5 × 2 = 5。'
+    ],
+    take:'小数点は dot_Click の中だけで処理しています。「数字がなければ 0 を補う」「点は1回だけ」「式に入れるときは最後の点を消す」の3つがポイントです。'
+  },
+  { id:'d1', title:'5 ÷ 0 = 7', group:'0除算・桁あふれ',
+    intro:'0で割ったときのエラーと、エラーの後の状態を見ます。',
+    keys:['5','÷','0','=','7'],
+    notes:[
+      '',
+      'total = 5、operation = "÷"。',
+      'currentInput は "0"。',
+      'Calculate が、割り算をする前に number が 0 かを確認し、エラーメッセージを返す。ShowError がすべてリセットしてから、下の段にメッセージを書く。中身は初期状態なのに、画面にはメッセージが出ている。',
+      '中身は初期状態なので、そのまま新しい数の入力になる。'
+    ],
+    take:'0で割る計算を実際にすると例外（DivideByZeroException）が起きてアプリが止まるので、割る前に確認しています。'
+  },
+  { id:'d2', title:'99999999 + 0.5 =', group:'0除算・桁あふれ',
+    intro:'入力の桁数制限と、答えの桁あふれを見ます。',
+    keys:['9*8','9','+','.','5','='],
+    notes:[
+      '8桁までは入力できる。',
+      'CountDigits が 8 なので受け付けずに return。ShowDisplay も呼ばれないので、画面も中身も変わらない。',
+      'total = 99999999。',
+      '',
+      '',
+      'total = 99999999.5。整数部分は8桁だが、四捨五入すると 100000000（9桁）になり表示しきれないので、桁あふれにする。'
+    ],
+    take:'桁あふれの判定は「四捨五入してから整数部分の桁数を数える」ことで、表示したときに9桁になってしまう値も見逃さないようにしています。99999999 × 2 のように、そのまま9桁になる場合も同じエラーです。'
+  },
+  { id:'e', title:'- 0 5 × - 2 =', group:'-2、C、CA',
+    intro:'マイナスの数の入力を見ます。',
+    keys:['-','0','5','×','-','2','='],
+    notes:[
+      '何も入力していないときの「-」は、引き算ではなく「マイナスの数の始まり」。currentInput = "-"。',
+      '"-" の後ろに 0 をつなげて "-0"。',
+      '"-05" にならないように、"-0" を "-" に戻してから 5 をつなげる。',
+      'total = -5。',
+      '演算子の直後の「-」も、演算子の入れ替えではなくマイナスの数の始まり。だから「-5×-2」と打てる。',
+      '',
+      '(-5) × (-2) = 10。'
+    ],
+    take:'「-」だけは、currentInput が空のときに特別扱いされます（OperatorPressed の L198）。「+」「×」「÷」なら、演算子の入れ替えになります。'
+  },
+  { id:'f', title:'1 2 3 C 4 + C 5 = C 6 CA', group:'-2、C、CA',
+    intro:'［C］（1文字消す）と［CA］（すべてクリア）を見ます。',
+    keys:['1','2','3','C','4','+','C','5','=','C','6','CA'],
+    notes:[
+      '', '', '',
+      '最後の1文字を消して "12"。',
+      '',
+      'total = 124。currentInput は空になる。',
+      'currentInput が空なので何も消さない。演算子「+」も消えない（124 はもう total に計算済みのため）。',
+      '',
+      '124 + 5 = 129。justCalculated = true。',
+      '答え "129" の最後の1文字を消して "12"。justCalculated を false にするので、続きを入力できる。',
+      'justCalculated が false なので、新しい計算にはならず "126" になる。［C］を押さずに 6 を押していたら、"6" から新しく始まっていた。',
+      'ResetAll ですべて初期状態に戻り、下の段は "0"。'
+    ],
+    take:'［C］が触るのは currentInput と justCalculated だけです。［CA］は ResetAll で total や式も含めて全部消します。'
+  }
+];
+const SC = Object.fromEntries(SCENARIOS.map(s => [s.id, s]));
+const esc = escHtml;
+
+function fmtVal(name, v){
+  if (name === 'total') return esc(v);
+  if (name === 'justCalculated') return v ? 'true' : 'false';
+  return esc('"' + v + '"');
+}
+const lines = t => Array.isArray(t.line) ? t.line : [t.line];
+function lineLabel(t){ const a = lines(t); return a.length > 1 ? `L${a[0]}–${a[a.length-1]}` : `L${a[0]}`; }
+
+/* ---------- code viewer ---------- */
+const codeEl = document.getElementById('code');
+function scrollCodeTo(n, flash){
+  const el = document.getElementById('L' + n);
+  if (!el) return;
+  codeEl.scrollTop = el.offsetTop - codeEl.clientHeight / 3;
+  if (flash){ el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+}
+function jumpTo(n){
+  const r = codeEl.getBoundingClientRect();
+  if (r.top < 0 || r.bottom > window.innerHeight) document.getElementById('codeTitle').scrollIntoView({behavior:'smooth', block:'start'});
+  setTimeout(() => scrollCodeTo(n, true), 250);
+}
+document.addEventListener('click', e => {
+  const a = e.target.closest('a.lref');
+  if (a){ e.preventDefault(); jumpTo(+a.dataset.l); }
+  const b = e.target.closest('button.lb');
+  if (b){ scrollCodeTo(+b.dataset.l, true); }
+});
+
+/* ---------- simulator ---------- */
+let calc = createCalc();
+let history = [];
+const player = { sc:null, idx:0 };
+const $ = id => document.getElementById(id);
+const varsEl = $('vars');
+varsEl.innerHTML = VARS.map(([n,t]) => `<tr id="sv-${n}"><td><span class="v ${n}">${n}</span></td><td class="t">${t}</td><td class="val"></td></tr>`).join('');
+
+function renderSim(res){
+  $('dUp').textContent = res.screen.upper;
+  $('dLo').textContent = res.screen.lower;
+  VARS.forEach(([n]) => {
+    const row = $('sv-' + n);
+    const now = res.after[n];
+    const changed = !!res.before && res.before[n] !== now;
+    row.classList.toggle('changed', changed);
+    row.querySelector('.val').innerHTML = fmtVal(n, now) + (changed ? `<span class="prev">← 前：${fmtVal(n, res.before[n])}</span>` : '');
+  });
+  const tr = $('trace');
+  if (!res.trace.length){
+    tr.innerHTML = '<li class="empty" style="--d:0;--g:none">ボタンを押すと、ここに処理の流れが出ます。</li>';
+  } else {
+    tr.innerHTML = res.trace.map(t => `<li style="--d:${t.depth};--g:${t.depth ? 'block' : 'none'}"><button class="lb" data-l="${lines(t)[0]}">${lineLabel(t)}</button>${t.html}</li>`).join('');
+  }
+  codeEl.querySelectorAll('.ln.hit').forEach(el => el.classList.remove('hit'));
+  res.trace.forEach(t => lines(t).forEach(n => { const el = $('L' + n); if (el) el.classList.add('hit'); }));
+  if (res.trace.length) scrollCodeTo(lines(res.trace[0])[0], false);
+  $('hist').textContent = history.length ? history.join(' ') : '（まだなし）';
+}
+
+function flashKey(k){
+  const b = document.querySelector(`.key[data-k="${CSS.escape(k)}"]`);
+  if (!b) return;
+  b.classList.add('flash'); setTimeout(() => b.classList.remove('flash'), 160);
+}
+
+function doPress(k){
+  const r = pressKey(calc, k);
+  const pk = parseKey(k);
+  history.push(pk.times > 1 ? `${pk.key}（${pk.times}回）` : pk.key);
+  renderSim(r);
+  return r;
+}
+
+$('keys').addEventListener('click', e => {
+  const b = e.target.closest('.key'); if (!b) return;
+  if (player.sc){ player.sc = null; renderPlayer(); }
+  doPress(b.dataset.k);
+});
+$('showNames').addEventListener('change', e => $('calc').classList.toggle('shownames', e.target.checked));
+$('restart').addEventListener('click', () => { calc = createCalc(); history = []; player.sc = null; renderPlayer(); renderSim(calc.state()); });
+
+/* ---------- player ---------- */
+$('chips').innerHTML = SCENARIOS.map(s => `<button class="chip" data-id="${s.id}">${esc(s.title)}</button>`).join('');
+$('chips').addEventListener('click', e => { const c = e.target.closest('.chip'); if (c) selectScenario(c.dataset.id); });
+
+function selectScenario(id){
+  calc = createCalc(); history = [];
+  player.sc = SC[id]; player.idx = 0;
+  renderPlayer(); renderSim(calc.state());
+  const n = $('stepnote'); n.style.display = 'block';
+  n.innerHTML = `<b>${esc(player.sc.title)}</b>：${esc(player.sc.intro)}「次へ」で1つずつボタンを押します。`;
+}
+function renderPlayer(){
+  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', !!player.sc && c.dataset.id === player.sc.id));
+  $('playerBody').style.display = player.sc ? 'block' : 'none';
+  $('freeMsg').textContent = player.sc ? '' : '電卓のボタンを自由に押すこともできます（再生中に押すと自由入力に切り替わります）。';
+  if (!player.sc){ $('stepnote').style.display = 'none'; return; }
+  $('seq').innerHTML = player.sc.keys.map((k, i) => `<span class="${i < player.idx ? 'done' : i === player.idx ? 'next' : ''}">${esc(keyLabel(k))}</span>`).join('');
+  $('next').disabled = player.idx >= player.sc.keys.length;
+  $('next').textContent = player.idx >= player.sc.keys.length ? '終わり' : `次へ ▶（${keyLabel(player.sc.keys[player.idx])}）`;
+}
+$('next').addEventListener('click', () => {
+  const s = player.sc; if (!s || player.idx >= s.keys.length) return;
+  const k = s.keys[player.idx];
+  flashKey(k.split('*')[0]);
+  doPress(k);
+  const note = s.notes[player.idx];
+  const n = $('stepnote');
+  n.style.display = 'block';
+  n.innerHTML = `<b>［${esc(keyLabel(k))}］</b> ${note ? esc(note) : '通った処理と値の変化を見てみましょう。'}` + (player.idx === s.keys.length - 1 ? `<br><b>まとめ：</b>${esc(s.take)}` : '');
+  player.idx++;
+  renderPlayer();
+});
+$('again').addEventListener('click', () => { if (player.sc) selectScenario(player.sc.id); });
+
+/* ---------- scenario tables ---------- */
+function miniScreen(s){ return `<div class="mini"><div class="u">${esc(s.upper) || '&nbsp;'}</div><div class="l">${esc(s.lower)}</div></div>`; }
+function buildTable(s){
+  const c = createCalc();
+  const init = c.state();
+  let prev = init.after;
+  let rows = `<tr class="init"><td class="no">0</td><td>（起動直後）</td>` +
+    VARS.map(([n]) => `<td class="val">${fmtVal(n, prev[n])}</td>`).join('') +
+    `<td>${miniScreen(init.screen)}</td><td class="pt">コンストラクタ（Form1）で ShowDisplay が呼ばれ、"0" が表示される。</td></tr>`;
+  s.keys.forEach((k, i) => {
+    const r = pressKey(c, k);
+    rows += `<tr><td class="no">${i+1}</td><td class="keycell">${esc(keyLabel(k))}</td>` +
+      VARS.map(([n]) => `<td class="val ${r.after[n] !== prev[n] ? 'chg' : ''}">${fmtVal(n, r.after[n])}</td>`).join('') +
+      `<td>${miniScreen(r.screen)}</td><td class="pt">${esc(s.notes[i] || '')}</td></tr>`;
+    prev = r.after;
+  });
+  const head = `<tr><th>#</th><th>押したボタン</th>` + VARS.map(([n]) => `<th><span class="v ${n}">${n}</span></th>`).join('') + `<th>画面（上／下）</th><th>ポイント</th></tr>`;
+  return `<div class="tblwrap"><table class="tbl scn">${head}${rows}</table></div>`;
+}
+let html = '', lastGroup = '';
+SCENARIOS.forEach(s => {
+  if (s.group !== lastGroup){ html += `<h3 style="margin-top:44px;font-size:1.35rem">${esc(s.group)}</h3>`; lastGroup = s.group; }
+  html += `<div class="scn-block"><div class="scn-head"><h3 class="mono">${esc(s.title)}</h3><button class="btn primary replay" data-id="${s.id}">▶ シミュレーターで見る</button></div>
+    <p style="margin:8px 0 0">${esc(s.intro)}</p>${buildTable(s)}<div class="takeaway">${esc(s.take)}</div></div>`;
+});
+$('scenarios').innerHTML = html;
+$('scenarios').addEventListener('click', e => {
+  const b = e.target.closest('.replay'); if (!b) return;
+  selectScenario(b.dataset.id);
+  document.getElementById('s5').scrollIntoView({behavior:'smooth', block:'start'});
+});
+
+renderPlayer();
+renderSim(calc.state());
+})();
+</script>
+</body>
+</html>
